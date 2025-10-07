@@ -7,7 +7,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 /**
  * Entity representing a hospital request.
@@ -28,12 +27,7 @@ public class SolicitudHospital extends PanacheEntityBase {
 
     /** The unique identifier of the hospital request. */
     @Id
-    @SequenceGenerator(
-        name = "solicitudHospitalSeq",
-        sequenceName = "SOLICITUD_HOSPITAL_SEQ",
-        allocationSize = 1
-    )
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "solicitudHospitalSeq")
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     public Long id;
 
     /** 
@@ -90,4 +84,3 @@ public class SolicitudHospital extends PanacheEntityBase {
     @Column(nullable = false)
     public String origen = "hospital";
 }
-

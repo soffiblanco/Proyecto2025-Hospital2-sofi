@@ -13,13 +13,13 @@ const login = async () => {
   errorMensaje.value = "";
 
   try {
-    const { id, roleId } = await loginUser(correo.value, contrasena.value);
+    const { token, user } = await loginUser(correo.value, contrasena.value);
 
-    if (id && roleId) {
-      setUser(id, roleId, router);
+    if (user?.id) {
+      setUser(String(user.id), user.roleId ?? 0, router);
 
-      // ✅ Guarda el email del usuario en localStorage
       localStorage.setItem("usuarioEmail", correo.value);
+      localStorage.setItem("authToken", token);
     } else {
       errorMensaje.value = "Error en los datos del usuario.";
     }

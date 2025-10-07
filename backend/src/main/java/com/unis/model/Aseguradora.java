@@ -6,7 +6,6 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 /**
  * Entity representing an insurance company.
@@ -22,8 +21,7 @@ public class Aseguradora {
 
     /** The unique identifier of the insurance company. */
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "aseguradora_seq")
-    @SequenceGenerator(name = "aseguradora_seq", sequenceName = "SEQ_ASEGURADORA", allocationSize = 1)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "ID_ASEGURADORA")
     private Long id;
 

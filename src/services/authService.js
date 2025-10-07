@@ -79,17 +79,24 @@ export const loginUser = async (correo, contrasena) => {
       throw new Error("Error al obtener los datos del usuario.");
     }
 
-    const { id, rol, estado } = response.data;
+    const { token, user } = response.data;
 
-    if (!id || !rol?.id) {
+    const roleMap = {
+      ADMIN: 1,
+      DOCTOR: 2,
+      EMPLEADO: 3,
+      PACIENTE: 4,
+      USER: 5,
+    };
+
+    const normalizedRole = user?.roleName ? user.roleName.toUpperCase() : "";
+    const roleId = roleMap[normalizedRole] ?? 0;
+
+    if (!user?.id) {
       throw new Error("El servidor no devolvió datos válidos.");
     }
 
-    if (estado === 0) {
-      throw new Error("Tu cuenta está inactiva. Espera a que un administrador la active.");
-    }
-
-    return { id, roleId: rol.id }; // 🔹 Retorna ID y Role
+    return { token, user: { ...user, roleId } };
   } catch (error) {
     console.error("Error iniciando sesión:", error.response?.data || error.message);
     throw error;

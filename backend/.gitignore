@@ -39,5 +39,9 @@ nb-configuration.xml
 # Local environment
 .env
 
+# SQLite databases
+/data/*.db
+/data/*.db-journal
+
 # Plugin directory
 /.quarkus/cli/plugins/

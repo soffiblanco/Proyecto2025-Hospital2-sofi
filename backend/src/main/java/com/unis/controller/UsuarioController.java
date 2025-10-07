@@ -1,7 +1,11 @@
 package com.unis.controller;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
+import com.unis.dto.LoginRequest;
+import com.unis.dto.LoginResponse;
 import com.unis.model.Rol;
 import com.unis.model.Usuario;
 import com.unis.service.UsuarioService;
@@ -42,20 +46,33 @@ public class UsuarioController {
     @Path("/registro")
     @Transactional
     public Response registrarUsuario(Usuario usuario) {
-        usuarioService.registrarUsuario(usuario);
-        return Response.ok(usuario).status(201).build();
+        Usuario registrado = usuarioService.registrarUsuario(usuario);
+        return Response.status(Response.Status.CREATED)
+                       .entity(Map.of("id", registrado.getId(), "correo", registrado.getCorreo()))
+                       .build();
     }
 
     @POST
     @Path("/login")
-    public Response login(Usuario usuario) {
-        Usuario usuarioEncontrado = usuarioService.obtenerUsuarioPorCorreo(usuario.getCorreo());
-        if (usuarioEncontrado != null && usuarioEncontrado.getContrasena().equals(usuario.getContrasena())) {
-            return Response.ok(usuarioEncontrado).build();
+    @Transactional
+    public Response login(LoginRequest req) {
+        if (req == null || req.correo == null || req.contrasena == null
+                || req.correo.isBlank() || req.contrasena.isBlank()) {
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(Map.of("error", "correo y contrasena requeridos")).build();
         }
-        return Response.status(Response.Status.UNAUTHORIZED)
-                       .entity("Credenciales incorrectas")
-                       .build();
+
+        try {
+            Optional<LoginResponse> out = usuarioService.intentarLogin(req.correo, req.contrasena);
+            if (out.isEmpty()) {
+                return Response.status(Response.Status.UNAUTHORIZED)
+                        .entity(Map.of("error", "Credenciales inválidas")).build();
+            }
+            return Response.ok(out.get()).build();
+        } catch (Exception e) {
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity(Map.of("error", "Credenciales inválidas")).build();
+        }
     }
 
     @GET
