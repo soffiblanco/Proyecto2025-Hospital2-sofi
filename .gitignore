@@ -31,3 +31,7 @@ coverage
 
 test-results/
 playwright-report/
+
+# SQLite databases por perfil
+backend/data/*.db
+backend/data/*.db-journal

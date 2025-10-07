@@ -7,7 +7,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 /**
  * Entity representing the historical background of an institution or organization.
@@ -27,8 +26,7 @@ public class Historia {
 
     /** The unique identifier of the history record. */
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "historia_seq")
-    @SequenceGenerator(name = "historia_seq", sequenceName = "HISTORIA_SEQ", allocationSize = 1)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     /** The name of the institution or entity. */

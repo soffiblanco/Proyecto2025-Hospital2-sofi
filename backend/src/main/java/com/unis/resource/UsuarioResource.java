@@ -1,6 +1,5 @@
 package com.unis.resource;
 
-import java.util.HashMap;
 import java.util.Map;
 
 import com.unis.model.Usuario;
@@ -36,10 +35,13 @@ public class UsuarioResource {
     @Path("/registro")
     @Transactional
     public Response registrarUsuario(Usuario usuario) {
-        usuarioService.registrarUsuario(usuario);
+        Usuario registrado = usuarioService.registrarUsuario(usuario);
 
-        Map<String, String> respuesta = new HashMap<>();
-        respuesta.put("mensaje", "Usuario registrado con éxito");
+        Map<String, Object> respuesta = Map.of(
+                "mensaje", "Usuario registrado con éxito",
+                "id", registrado.getId(),
+                "correo", registrado.getCorreo()
+        );
 
         return Response.status(Response.Status.CREATED).entity(respuesta).build();
     }

@@ -9,7 +9,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
-import jakarta.persistence.SequenceGenerator;
 import jakarta.persistence.Table;
 /**
  * Entity representing the content of a web page.
@@ -32,8 +31,7 @@ public class PageContent {
 
     /** The unique identifier of the page content. */
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "pageContentSeq")
-    @SequenceGenerator(name = "pageContentSeq", sequenceName = "PAGE_CONTENT_SEQ", allocationSize = 1)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "ID_CONTENT")
     private Long idContent;
 

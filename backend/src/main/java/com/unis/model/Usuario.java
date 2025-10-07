@@ -3,13 +3,17 @@ package com.unis.model;
 
 import java.util.Date;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import jakarta.persistence.Temporal;
 import jakarta.persistence.TemporalType;
@@ -23,6 +27,7 @@ import jakarta.persistence.TemporalType;
  */
 
 @Entity
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @Table(name = "USUARIO")
 public class Usuario {
 
@@ -65,8 +70,8 @@ public class Usuario {
      * This field establishes a many-to-one relationship with the role entity.
      * </p>
      */
-    @ManyToOne
-    @JoinColumn(name = "ROL_ID", nullable = true)
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "ROL_ID", nullable = false)
     private Rol rol;
 
     /** 
@@ -158,5 +163,15 @@ public class Usuario {
     /** @param fechaCreaction the creation date of the user record. */
     public void setFechaCreaction(Date fechaCreaction) {
         this.fechaCreaction = fechaCreaction;
+    }
+
+    @PrePersist
+    public void prePersist() {
+        if (estado == 0) {
+            estado = 1;
+        }
+        if (fechaCreaction == null) {
+            fechaCreaction = new Date();
+        }
     }
 }
