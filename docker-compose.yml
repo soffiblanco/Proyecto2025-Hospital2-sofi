@@ -10,6 +10,22 @@ services:
     networks:
       - app-network
 
+prometheus:
+image: prom/prometheus:latest
+container_name: mon-prometheus
+ports:
+- "9090:9090"
+volumes:
+- ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+grafana:
+image: grafana/grafana:latest
+container_name: mon-grafana
+ports:
+- "3000:3000"
+depends_on:
+- prometheus
+
   backend:
     build:
       context: /home/andrespc/Documents/Proyecto2025/backend  #  Backend usa backend/
