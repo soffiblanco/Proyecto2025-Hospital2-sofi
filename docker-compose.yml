@@ -10,6 +10,21 @@ services:
     networks:
       - app-network
 
+      prometheus:
+    image: prom/prometheus:latest
+    ports: ["9090:9090"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks: [ default ]
+
+  grafana:
+    image: grafana/grafana:latest
+    ports: ["3000:3000"]
+    volumes:
+      - ./monitoring/grafana:/var/lib/grafana
+    depends_on: [ prometheus ]
+    networks: [ default ]
+
 
   backend:
     build:
