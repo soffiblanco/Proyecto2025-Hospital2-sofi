@@ -1,21 +1,16 @@
 services:
 prometheus:
 image: prom/prometheus:latest
+container_name: mon-prometheus
 ports:
 - "9090:9090"
 volumes:
-- ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-networks:
-- default
+- ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
 
 grafana:
 image: grafana/grafana:latest
+container_name: mon-grafana
 ports:
 - "3000:3000"
 depends_on:
 - prometheus
-networks:
-- default
-networks:
-default:
-driver: bridge
