@@ -1,11 +1,26 @@
 global:
-scrape_interval: 15s
+  scrape_interval: 15s
+  evaluation_interval: 30s
+
 scrape_configs:
-- job_name: jenkins
-metrics_path: /prometheus
-static_configs:
-- targets: ["35.208.128.41:8080"] # tu Jenkins
-- job_name: app
-metrics_path: /q/metrics
-static_configs:
-- targets: ["backend:8080"] 
+  # métricas del host
+  - job_name: "node"
+    static_configs:
+      - targets: ["127.0.0.1:9100"]   # node_exporter (host network)
+
+  # contenedores Docker
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  # Quarkus (Micrometer Prometheus) en tus 3 ambientes
+  - job_name: "quarkus"
+    metrics_path: /q/metrics
+    static_configs:
+      - targets: ["35.208.128.41:3001","35.208.128.41:3002","35.208.128.41:3003"]
+
+  # Jenkins (requiere plugin Prometheus)
+  - job_name: "jenkins"
+    metrics_path: /prometheus
+    static_configs:
+      - targets: ["jenkins:8080"]   # nombre del contenedor de Jenkins en appnet
