@@ -28,10 +28,15 @@
         <version>${quarkus.platform.version}</version>
         <type>pom</type>
         <scope>import</scope>
-         <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
       </dependency>
     </dependencies>
   </dependencyManagement>
+
+          <!-- Métricas Prometheus -->
+  <dependency>
+    <groupId>io.quarkus</groupId>
+    <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
+  </dependency>
 
   <dependencies>
     <!-- ORM y Base de Datos -->
