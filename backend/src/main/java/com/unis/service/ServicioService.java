@@ -1,5 +1,6 @@
 package com.unis.service;
 
+import java.util.Comparator;
 import java.util.List;
 
 import com.unis.model.Servicio;
@@ -82,7 +83,18 @@ public class ServicioService {
      */
     public List<Servicio> listarSubServicios(Long id) {
         Servicio servicioPadre = servicioRepository.findById(id);
-        return servicioPadre != null ? servicioPadre.subServicios.stream().toList() : List.of();
+        if (servicioPadre == null) {
+            return List.of();
+        }
+        // Orden estable: primero por id (nulls primero), luego por identidad de objeto
+        return servicioPadre.subServicios
+                .stream()
+                .sorted(
+                        Comparator
+                                .comparing(Servicio::getId, Comparator.nullsFirst(Long::compareTo))
+                                .thenComparingInt(System::identityHashCode)
+                )
+                .toList();
     }
 
     /**

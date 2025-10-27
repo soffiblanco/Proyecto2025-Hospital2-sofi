@@ -1,7 +1,7 @@
 
 package com.unis.model;
 
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
@@ -84,7 +84,7 @@ public class Servicio extends PanacheEntity {
      */
     @OneToMany(mappedBy = "servicioPadre", cascade = CascadeType.MERGE, orphanRemoval = true, fetch = FetchType.LAZY)
     @JsonManagedReference
-    public Set<Servicio> subServicios = new HashSet<>();
+    public Set<Servicio> subServicios = new LinkedHashSet<>();
 
     // Getters
 

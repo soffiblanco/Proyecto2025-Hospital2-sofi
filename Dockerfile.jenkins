@@ -1,0 +1,66 @@
+pipeline {
+  agent any
+  environment {
+    IMAGE = "miapp"              // no haremos push, se queda local
+    APP_PORT_INTERNAL = "8080"   // Quarkus expone 8080
+    SONARQUBE_ENV = "SonarLocal" // nombre configurado en Jenkins
+  }
+  triggers { pollSCM('H/2 * * * *') }  // ok sin webhook
+
+  stages {
+    stage('Checkout') { steps { checkout scm } }
+
+    stage('Build & Tests (Maven)') {
+      steps {
+        sh 'mvn -f backend/pom.xml -B -DskipTests=false clean verify'
+      }
+    }
+
+    stage('SonarQube Analysis') {
+      steps {
+        withSonarQubeEnv("${SONARQUBE_ENV}") {
+          sh 'mvn -f backend/pom.xml -B sonar:sonar'
+        }
+      }
+    }
+
+    stage('Quality Gate') {
+      steps {
+        timeout(time: 5, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+
+    stage('Docker Build (backend/Dockerfile.jvm)') {
+      steps {
+        // Usa TU Dockerfile dentro de backend y el contexto backend
+        sh "docker build -f Dockerfile.jvm -t ${IMAGE}:${env.BRANCH_NAME} backend"
+      }
+    }
+
+    stage('Deploy per branch (SQLite)') {
+      steps {
+        script {
+          def port = (env.BRANCH_NAME == 'dev') ? '3001' :
+                     (env.BRANCH_NAME == 'uat') ? '3002' : '3003'
+          def hostDir = (env.BRANCH_NAME == 'dev') ? '/srv/sqlite/dev' :
+                        (env.BRANCH_NAME == 'uat') ? '/srv/sqlite/uat' : '/srv/sqlite/prod'
+          def dbFile  = (env.BRANCH_NAME == 'dev') ? '/data/sqlite/dev.db' :
+                        (env.BRANCH_NAME == 'uat') ? '/data/sqlite/uat.db' : '/data/sqlite/prod.db'
+          def cname = "app_${env.BRANCH_NAME}"
+
+          sh "docker rm -f ${cname} || true"
+          sh """
+            docker run -d --name ${cname} --network appnet \
+              -e DB_FILE='${dbFile}' \
+              -p ${port}:${APP_PORT_INTERNAL} \
+              -v ${hostDir}:/data/sqlite \
+              ${IMAGE}:${env.BRANCH_NAME}
+          """
+          echo "✅ ${env.BRANCH_NAME}: http://<IP_VM>:${port} usando ${dbFile}"
+        }
+      }
+    }
+  }
+}

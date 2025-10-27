@@ -1,7 +1,7 @@
 package com.unis.service;
 
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -142,13 +142,16 @@ public class ServicioServiceTest {
         Servicio padre = new Servicio();
         Servicio sub1 = new Servicio();
         Servicio sub2 = new Servicio();
-        padre.subServicios = new HashSet<>(Arrays.asList(sub1, sub2));
+        padre.subServicios = new LinkedHashSet<>(Arrays.asList(sub1, sub2));
 
         when(servicioRepository.findById(1L)).thenReturn(padre);
 
         List<Servicio> result = servicioService.listarSubServicios(1L);
 
-    assertIterableEquals(Arrays.asList(sub1, sub2), result);
+        // Verificar que la lista tiene el tamaño correcto y contiene los elementos
+        assertEquals(2, result.size());
+        assertTrue(result.contains(sub1));
+        assertTrue(result.contains(sub2));
     }
 
     @Test

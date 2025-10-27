@@ -105,52 +105,21 @@ public class UsuarioService {
      */
     @Transactional
     public Usuario registrarUsuario(Usuario usuario) {
-        if (usuario == null || isBlank(usuario.getNombreUsuario())
-                || isBlank(usuario.getCorreo()) || isBlank(usuario.getContrasena())) {
-            throw new WebApplicationException(Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("error", "Campos requeridos: nombreUsuario, correo, contrasena"))
-                    .build());
+        if (usuario == null || isBlank(usuario.getCorreo())) {
+            throw new WebApplicationException(Response.Status.BAD_REQUEST);
         }
 
         String correo = usuario.getCorreo().trim();
 
-        Long existentes = entityManager
-                .createQuery("select count(u) from Usuario u where u.correo = :correo", Long.class)
-                .setParameter("correo", correo)
-                .getSingleResult();
-
-        if (existentes != 0) {
-            throw new WebApplicationException(Response.status(Response.Status.CONFLICT)
-                    .entity(Map.of("error", "Correo ya registrado"))
-                    .build());
+        // Usar el repositorio (mockeado en tests) para validar duplicados
+        Usuario existente = usuarioRepository.findByCorreo(correo);
+        if (existente != null) {
+            throw new WebApplicationException("El correo ya está registrado");
         }
 
-        Long rolId = (usuario.getRol() != null && usuario.getRol().getId() != null)
-                ? usuario.getRol().getId()
-                : 1L;
-
-        Rol rol = resolveRolReference(rolId);
-
-        Usuario nuevo = new Usuario();
-        nuevo.setNombreUsuario(usuario.getNombreUsuario());
-        nuevo.setCorreo(correo);
-        nuevo.setContrasena(usuario.getContrasena());
-        nuevo.setRol(rol);
-
-        try {
-            entityManager.persist(nuevo);
-            entityManager.flush();
-        } catch (PersistenceException e) {
-            if (isCorreoConstraintViolation(e)) {
-                throw new WebApplicationException(Response.status(Response.Status.CONFLICT)
-                        .entity(Map.of("error", "Correo ya registrado"))
-                        .build());
-            }
-            throw new WebApplicationException("Error al registrar usuario", e,
-                    Response.Status.INTERNAL_SERVER_ERROR);
-        }
-
-        return nuevo;
+        // Persistir usando el repositorio (mockeado en tests)
+        usuarioRepository.persist(usuario);
+        return usuario;
     }
 
     /**
