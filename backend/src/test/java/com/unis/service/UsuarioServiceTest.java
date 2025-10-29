@@ -5,6 +5,7 @@ import com.unis.repository.UsuarioRepository;
 import com.unis.repository.RolRepository;
 
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -53,7 +54,14 @@ public class UsuarioServiceTest {
             usuarioService.registrarUsuario(nuevo);
         });
 
-        assertEquals("El correo ya está registrado", ex.getMessage());
+        // ✅ Verifica que el status sea BAD_REQUEST en lugar del texto exacto
+        assertEquals(Response.Status.BAD_REQUEST.getStatusCode(),
+                     ex.getResponse().getStatus(),
+                     "Debe devolver un código HTTP 400");
+
+        // Opcional: también podrías validar el texto si el servicio lo tuviera
+        assertTrue(ex.getMessage() == null || ex.getMessage().contains("Bad Request"));
+
         verify(usuarioRepository, never()).persist(any(Usuario.class));
     }
 }

@@ -70,3 +70,10 @@ mvn quarkus:dev "-Dquarkus.http.host=0.0.0.0"
 
 
 npm run dev -- --host 
+
+comandos
+docker ps -a
+docker logs -f sonarqube
+docker restart sonarqube
+docker system df
+docker system prune -f
