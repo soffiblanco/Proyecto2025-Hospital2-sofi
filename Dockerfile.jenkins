@@ -33,15 +33,19 @@ pipeline {
 
     stage('SonarQube Analysis') {
       steps {
-        withSonarQubeEnv("${SONARQUBE_ENV}") {
+        withSonarQubeEnv('SonarLocal') {
           sh '''
             set -e
             cd backend
-            ./mvnw -B sonar:sonar
+            ./mvnw -B sonar:sonar \
+              -Dsonar.projectKey=hospital-mbp-backend \
+              -Dsonar.projectName="hospital-mbp-backend" \
+              -Dsonar.java.binaries=target/classes
           '''
         }
       }
     }
+    
 
     stage('Quality Gate') {
       steps {
