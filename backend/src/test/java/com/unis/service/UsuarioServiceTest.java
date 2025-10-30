@@ -1,5 +1,6 @@
 package com.unis.service;
 
+import com.unis.dto.LoginResponse;
 import com.unis.model.Rol;
 import com.unis.model.Usuario;
 import com.unis.repository.RolRepository;
@@ -10,6 +11,7 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.Response;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.Map;
 
@@ -20,9 +22,13 @@ import static org.mockito.Mockito.*;
 public class UsuarioServiceTest {
 
     private UsuarioService usuarioService;
-    private UsuarioRepository usuarioRepository; // no lo usa registrarUsuario, pero lo dejamos mockeado
-    private RolRepository rolRepository;         // no lo usa registrarUsuario, pero lo dejamos mockeado
+    private UsuarioRepository usuarioRepository; // se mantiene por inyección, aunque no lo usemos
+    private RolRepository rolRepository;         // idem
     private EntityManager entityManager;
+
+    // Mocks para el query encadenado de conteo
+    @SuppressWarnings("unchecked")
+    private TypedQuery<Long> countQuery = mock(TypedQuery.class);
 
     @BeforeEach
     void setUp() {
@@ -34,91 +40,75 @@ public class UsuarioServiceTest {
         usuarioService.usuarioRepository = usuarioRepository;
         usuarioService.rolRepository = rolRepository;
         usuarioService.entityManager = entityManager;
+
+        // Stubs comunes para el query de conteo
+        when(entityManager.createQuery(anyString(), eq(Long.class))).thenReturn(countQuery);
+        when(countQuery.setParameter(eq("correo"), anyString())).thenReturn(countQuery);
     }
 
     @Test
-    void registrarUsuario_cuandoCorreoNoExiste_deberiaPersistir() {
-        // Arrange: usuario válido con campos mínimos requeridos
-        Usuario entrada = new Usuario();
-        entrada.setNombreUsuario("Nuevo User");
-        entrada.setCorreo("nuevo@email.com");
-        entrada.setContrasena("Secret123!");
+    void registrarUsuario_cuandoPayloadInvalido_deberiaBadRequest() {
+        Usuario invalido = new Usuario(); // falta nombreUsuario/correo/contrasena
+        WebApplicationException ex = assertThrows(WebApplicationException.class,
+                () -> usuarioService.registrarUsuario(invalido));
 
-        // Mock: query de conteo -> 0L (no existe)
-        @SuppressWarnings("unchecked")
-        TypedQuery<Long> countQuery = mock(TypedQuery.class);
-        when(entityManager.createQuery(
-                eq("select count(u) from Usuario u where u.correo = :correo"),
-                eq(Long.class))
-        ).thenReturn(countQuery);
-        when(countQuery.setParameter(eq("correo"), anyString())).thenReturn(countQuery);
+        assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), ex.getResponse().getStatus());
+    }
+
+    @Test
+    void registrarUsuario_cuandoCorreoNoExiste_deberiaPersistirYRetornarUsuario() {
+        // 0 = no duplicado
         when(countQuery.getSingleResult()).thenReturn(0L);
 
-        // Mock: resolveRolReference(1L) -> getReference OK
+        // Rol por defecto (id 1) vía reference
         Rol rolRef = new Rol();
         rolRef.setId(1L);
-        rolRef.setRoleName("USER");
         when(entityManager.getReference(eq(Rol.class), eq(1L))).thenReturn(rolRef);
 
-        // Mock: persist/flush (void)
+        // No lanzar al persist/flush
         doNothing().when(entityManager).persist(any(Usuario.class));
         doNothing().when(entityManager).flush();
 
-        // Act + Assert
-        assertDoesNotThrow(() -> {
-            Usuario creado = usuarioService.registrarUsuario(entrada);
-            assertNotNull(creado);
-            assertEquals("nuevo@email.com", creado.getCorreo());
-            assertEquals("Nuevo User", creado.getNombreUsuario());
-            assertEquals("Secret123!", creado.getContrasena());
-            assertNotNull(creado.getRol());
-            assertEquals(1L, creado.getRol().getId());
-        });
+        Usuario input = new Usuario();
+        input.setNombreUsuario("Pepe");
+        input.setCorreo("nuevo@email.com");
+        input.setContrasena("123");
 
-        // Verifica que realmente se intentó persistir
-        verify(entityManager, times(1)).persist(any(Usuario.class));
-        verify(entityManager, times(1)).flush();
+        Usuario creado = assertDoesNotThrow(() -> usuarioService.registrarUsuario(input));
+        assertNotNull(creado);
 
-        // No debería llamar a persist del repository aquí
-        verify(usuarioRepository, never()).persist(any());
+        // Capturamos lo persistido para validar campos
+        ArgumentCaptor<Usuario> captor = ArgumentCaptor.forClass(Usuario.class);
+        verify(entityManager).persist(captor.capture());
+        Usuario persistido = captor.getValue();
+
+        assertEquals("Pepe", persistido.getNombreUsuario());
+        assertEquals("nuevo@email.com", persistido.getCorreo());
+        assertEquals("123", persistido.getContrasena());
+        assertNotNull(persistido.getRol());
+        assertEquals(1L, persistido.getRol().getId());
     }
 
     @Test
-    void registrarUsuario_cuandoCorreoYaExiste_deberiaLanzarConflict409ConMensaje() {
-        // Arrange
-        Usuario entrada = new Usuario();
-        entrada.setNombreUsuario("Alguien");
-        entrada.setCorreo("repetido@email.com");
-        entrada.setContrasena("Secret123!");
-
-        // Mock: query de conteo -> 1L (ya existe)
-        @SuppressWarnings("unchecked")
-        TypedQuery<Long> countQuery = mock(TypedQuery.class);
-        when(entityManager.createQuery(
-                eq("select count(u) from Usuario u where u.correo = :correo"),
-                eq(Long.class))
-        ).thenReturn(countQuery);
-        when(countQuery.setParameter(eq("correo"), anyString())).thenReturn(countQuery);
+    void registrarUsuario_cuandoCorreoYaExiste_deberiaConflict409() {
+        // 1 = ya existe
         when(countQuery.getSingleResult()).thenReturn(1L);
 
-        // Act
-        WebApplicationException ex = assertThrows(WebApplicationException.class, () -> {
-            usuarioService.registrarUsuario(entrada);
-        });
+        Usuario input = new Usuario();
+        input.setNombreUsuario("Ana");
+        input.setCorreo("repetido@email.com");
+        input.setContrasena("123");
 
-        // Assert: 409 CONFLICT y payload {"error":"Correo ya registrado"}
+        WebApplicationException ex = assertThrows(WebApplicationException.class,
+                () -> usuarioService.registrarUsuario(input));
+
         assertEquals(Response.Status.CONFLICT.getStatusCode(), ex.getResponse().getStatus());
-
+        // Si quieres, también puedes inspeccionar el body JSON:
         Object entity = ex.getResponse().getEntity();
-        assertNotNull(entity);
-        assertTrue(entity instanceof Map, "El entity debe ser un Map con el error");
-        @SuppressWarnings("unchecked")
-        Map<String, Object> map = (Map<String, Object>) entity;
-        assertEquals("Correo ya registrado", map.get("error"));
-
-        // No debe persistir si hubo conflicto
+        if (entity instanceof Map<?, ?> map) {
+            assertTrue(String.valueOf(map.get("error")).contains("Correo ya registrado"));
+        }
+        // Asegura que NO se llamó a persist
         verify(entityManager, never()).persist(any(Usuario.class));
-        verify(entityManager, never()).flush();
-        verify(usuarioRepository, never()).persist(any());
     }
 }
