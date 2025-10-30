@@ -91,7 +91,7 @@ script {
       cname  = 'app_master'
       break
     case 'prod':
-      port   = '3004'
+      port   = '3003'
       hostDir= '/srv/sqlite/prod'
       dbFile = '/data/sqlite/prod.db'
       cname  = 'app_prod'
