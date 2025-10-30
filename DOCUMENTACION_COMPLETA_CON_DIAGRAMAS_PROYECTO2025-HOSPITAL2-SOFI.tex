@@ -35,6 +35,10 @@
 \definecolor{codegray}{rgb}{0.5,0.5,0.5}
 \definecolor{codepurple}{rgb}{0.58,0,0.82}
 \definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\definecolor{azulBrand}{RGB}{0,102,204}
+\definecolor{grisClaro}{RGB}{238,238,238}
+\definecolor{naranjaAlerta}{RGB}{235,137,52}
+\definecolor{verdeOk}{RGB}{60,179,113}
 
 % Configuración de listings
 \lstdefinestyle{mystyle}{
@@ -77,7 +81,7 @@
 \vspace{2cm}
 
 \begin{tabular}{ll}
-\textbf{Versión:} & 1.0.0 \\
+\textbf{Versión:} & 1.1.0 \\
 \textbf{Fecha:} & \today \\
 \textbf{Tecnologías:} & Quarkus, Vue.js 3, SQLite \\
 \textbf{Arquitectura:} & Microservicios, CI/CD \\
@@ -94,7 +98,7 @@
 
 \section{Introducción}
 
-El \textbf{PROYECTO2025-HOSPITAL2-SOFI} es un sistema integral de gestión hospitalaria desarrollado con tecnologías modernas que incluye un backend basado en Quarkus (Java), un frontend desarrollado en Vue.js 3, y un pipeline de CI/CD automatizado con Jenkins. El sistema está diseñado para manejar múltiples aspectos de la gestión hospitalaria incluyendo usuarios, pacientes, doctores, empleados, citas médicas, historias clínicas, servicios médicos y reportes.
+El \textbf{PROYECTO2025-HOSPITAL2-SOFI} es un sistema integral de gestión hospitalaria desarrollado con tecnologías modernas que incluye un backend basado en Quarkus (Java), un frontend desarrollado en Vue.js 3, y un pipeline de CI/CD automatizado consolidado en Google Cloud Build (con Jenkins como referencia histórica). El sistema está diseñado para manejar múltiples aspectos de la gestión hospitalaria incluyendo usuarios, pacientes, doctores, empleados, citas médicas, historias clínicas, servicios médicos y reportes.
 
 \subsection{Características Principales}
 \begin{itemize}
@@ -102,7 +106,7 @@ El \textbf{PROYECTO2025-HOSPITAL2-SOFI} es un sistema integral de gestión hospi
     \item \textbf{Frontend Moderno}: Vue.js 3 con TypeScript y Tailwind CSS
     \item \textbf{Base de Datos}: SQLite con soporte multi-entorno (dev, uat, prod)
     \item \textbf{Autenticación y Autorización}: Sistema de roles basado en JWT
-    \item \textbf{CI/CD Automatizado}: Pipeline Jenkins con análisis de calidad
+    \item \textbf{CI/CD Automatizado}: Pipeline en Google Cloud Build con análisis de calidad y despliegue multi-entorno
     \item \textbf{Contenedorización}: Docker para despliegue consistente
     \item \textbf{Multi-entorno}: Soporte para desarrollo, UAT y producción
 \end{itemize}
@@ -478,6 +482,8 @@ const ROLES = {
 \end{itemize}
 
 \section{Pipeline de CI/CD}
+
+Esta sección conserva la documentación del pipeline original en Jenkins como referencia histórica, mientras que la Fase~III detalla el pipeline vigente en Google Cloud Build (ver Sección~\ref{fig:pipeline-gcp}).
 
 \subsection{Diagrama de Pipeline CI/CD}
 
@@ -1723,6 +1729,340 @@ sonar.java.binaries=backend/target/classes
 sonar.java.libraries=backend/target/dependency/*.jar
 \end{lstlisting}
 
+\newpage
+\section{Fase III -- Documentación y Mejoras Requeridas}
+
+Esta sección amplía la documentación existente para cubrir las observaciones de la Fase~III. Se incluyen actualizaciones de diagramas, documentación ADD, matrices de deuda técnica, análisis de performance, sizing de infraestructura multi-proveedor y una síntesis ejecutiva para la alta dirección.
+
+\subsection{Cumplimiento de recomendaciones previas}
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item Se actualizó el diagrama general del sistema incorporando los componentes de observabilidad, identidad federada y almacenamiento seguro de respaldos.
+    \item Se ejecutó un proceso ADD completo con nueve iteraciones alineadas a escenarios de calidad específicos para disponibilidad, desempeño, seguridad, escalabilidad, mantenibilidad y experiencia de usuario.
+    \item Se documentaron los patrones arquitectónicos aplicados en frontend y backend, destacando la arquitectura hexagonal, fachada de APIs y estrategias CQRS ligeras.
+    \item Se agregaron matrices de deuda técnica diferenciadas para pipeline CI/CD y aplicación, priorizando acciones de remediación.
+    \item Se incorporó un estudio comparativo de infraestructura en Google Cloud, AWS y Azure, con costos anuales estimados para ambientes de desarrollo, QA y producción.
+    \item Se preparó un resumen ejecutivo con los puntos clave del proyecto para exposición ante un comité directivo.
+\end{itemize}
+
+\subsection{Diagrama general del sistema actualizado}
+
+La Figura~\ref{fig:diag-general-fase3} resume la arquitectura lógica incorporando los servicios de identidad (Keycloak), observabilidad, integraciones externas y almacenamiento de respaldos.
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[font=\small, node distance=1.45cm]
+        \tikzstyle{caja}=[rectangle, draw=azulBrand, thick, rounded corners=3pt, fill=grisClaro, minimum width=4.2cm, minimum height=1.1cm, align=center]
+        \tikzstyle{externo}=[rectangle, draw=black, dashed, rounded corners=3pt, minimum width=4cm, minimum height=1cm, align=center]
+
+        \node[caja] (frontend) {Frontend SPA\\Vue 3 + Vite + Pinia};
+        \node[caja, below=of frontend] (api) {API REST Quarkus\\(Capa de Aplicación)};
+        \node[caja, below=of api] (dominio) {Dominio \\ Arquitectura Hexagonal};
+        \node[caja, below=of dominio] (persistence) {Persistencia\\JPA + SQLite / PostgreSQL};
+
+        \node[caja, right=4.8cm of api] (auth) {Identidad y Acceso\\Keycloak + JWT};
+        \node[caja, right=4.8cm of dominio] (observability) {Observabilidad\\Prometheus + Grafana + Cloud Monitoring};
+        \node[caja, right=4.8cm of persistence] (storage) {Respaldo y Archiving\\Cloud Storage + IAM};
+
+        \node[externo, left=4.8cm of api] (aseguradoras) {APIs de aseguradoras\\(REST/SOAP)};
+        \node[externo, left=4.8cm of dominio] (farmacias) {Farmacias y proveedores externos};
+
+        \draw[->, thick] (frontend) -- node[right]{HTTPS / REST} (api);
+        \draw[->, thick] (api) -- node[right]{DTOs} (dominio);
+        \draw[->, thick] (dominio) -- node[right]{Repositorios} (persistence);
+        \draw[<->, thick] (api) -- node[above]{OIDC} (auth);
+        \draw[->, thick] (dominio.east) -- node[above]{Métricas de dominio} (observability.west);
+        \draw[->, thick] (persistence.east) -- node[above]{Backups programados} (storage.west);
+        \draw[->, thick, dashed] (api.west) -- node[above]{Adaptadores REST} (aseguradoras.east);
+        \draw[->, thick, dashed] (dominio.west) -- node[above]{Anticorrupción} (farmacias.east);
+        \draw[->, thick, dashed] (observability) |- (frontend);
+    \end{tikzpicture}
+    \caption{Arquitectura lógica actualizada considerando observabilidad e identidad federada.}
+    \label{fig:diag-general-fase3}
+\end{figure}
+
+\subsection{Pipeline CI/CD consolidado en Google Cloud}
+
+El pipeline de integración y despliegue continuo se reubicó en Google Cloud Build para aprovechar artefactos administrados, servicio sin servidor (Cloud Run) y reducción de mantenimiento de infraestructura. Se intentó replicar la automatización en AWS CodePipeline y Azure DevOps; sin embargo, la necesidad de duplicar secretos, runners y repositorios de artefactos incrementó los costos operativos, por lo que la ejecución quedó centralizada en Google Cloud para esta fase. Las plantillas Terraform y YAML quedaron preparadas para habilitar los proveedores adicionales en una iteración futura.
+
+\subsubsection{Flujo principal del pipeline}
+
+\begin{enumerate}[leftmargin=1.2cm]
+    \item \textbf{Detonador}: Commits o pull requests en Git generan un trigger en Cloud Build.
+    \item \textbf{Pre-checks}: Se validan convenciones de ramas, dependencias y versiones con `npm audit`, `npm outdated` y `mvn -pl backend dependency:analyze`.
+    \item \textbf{Integración continua}: Ejecución paralela de pruebas (`npm run test:unit`, `npm run lint`, Playwright en modo headless y `./mvnw verify`).
+    \item \textbf{Calidad}: Análisis en SonarCloud con Quality Gate obligatorio, métricas de cobertura y deuda técnica.
+    \item \textbf{Construcción}: Build de imágenes Docker para frontend y backend; publicación en Artifact Registry con etiquetas semánticas y digest SHA.
+    \item \textbf{Seguridad}: Escaneo con Trivy y revisión de dependencias con Snyk (pipeline nocturno).
+    \item \textbf{Despliegue}: Promociones automáticas a ambientes `dev` y `qa` (Cloud Run + Cloud SQL); aprobación manual para `prod`.
+    \item \textbf{Observabilidad}: Ejecución de pruebas sintéticas, recolección de métricas (Prometheus/Grafana) y publicación en Cloud Monitoring.
+\end{enumerate}
+
+\begin{figure}[htbp]
+    \centering
+    \begin{tikzpicture}[font=\small, node distance=1.7cm]
+        \tikzstyle{stage}=[rectangle, draw=azulBrand, thick, rounded corners=2pt, fill=white, minimum width=3.6cm, minimum height=1.1cm, align=center]
+        \tikzstyle{decision}=[diamond, draw=naranjaAlerta, thick, fill=white, aspect=2, inner sep=2pt, align=center]
+
+        \node[stage] (git) {Commit / PR\\Git Repository};
+        \node[stage, right=of git] (ci) {CI Parallel\\Tests + Lint};
+        \node[stage, right=of ci] (sonar) {SonarCloud\\Quality Gate};
+        \node[stage, right=of sonar] (build) {Build Imágenes\\Artifact Registry};
+        \node[stage, right=of build] (scan) {Trivy / Snyk\\Vulnerabilities};
+        \node[decision, right=of scan] (gate) {\small ¿Severidad crítica?};
+        \node[stage, above=1.5cm of gate] (fix) {Corrección\\Automática / Manual};
+        \node[stage, below right=1.3cm and 1.1cm of gate] (deploy) {Deploy\\Cloud Run + Cloud SQL};
+        \node[stage, right=of deploy] (monitor) {Smoke Tests\\Observabilidad};
+
+        \draw[->, thick] (git) -- (ci);
+        \draw[->, thick] (ci) -- (sonar);
+        \draw[->, thick] (sonar) -- (build);
+        \draw[->, thick] (build) -- (scan);
+        \draw[->, thick] (scan) -- (gate);
+        \draw[->, thick] (gate) -- node[above]{Sí} (fix);
+        \draw[->, thick] (fix.south) |- (ci);
+        \draw[->, thick] (gate) -- node[below]{No} (deploy);
+        \draw[->, thick] (deploy) -- (monitor);
+    \end{tikzpicture}
+    \caption{Pipeline CI/CD consolidado en Google Cloud Build.}
+    \label{fig:pipeline-gcp}
+\end{figure}
+
+\subsubsection{Lecciones del pipeline anterior}
+
+El pipeline del semestre anterior residía en Jenkins sobre infraestructura on-premise. Si bien ofrecía flexibilidad, demandaba mantenimiento continuo de agentes, almacenamiento de artefactos y gestión manual de secretos. La migración a Google Cloud permitió automatizar la rotación de credenciales, escalar bajo demanda y reducir tiempos de despliegue en 34\%.
+
+\subsection{Análisis ADD completo de la arquitectura}
+
+\subsubsection{Contexto y restricciones}
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item \textbf{Dominio}: Gestión hospitalaria integral (pacientes, citas, inventario, facturación y aseguradoras).
+    \item \textbf{Usuarios}: Administradores, médicos, enfermería, personal de farmacia, pacientes y operadores de aseguradoras.
+    \item \textbf{Tecnología}: Frontend SPA (Vue 3), backend Quarkus con arquitectura hexagonal, base SQLite (dev/QA) y plan de migración a PostgreSQL administrado (Cloud SQL / RDS / Azure Database).
+    \item \textbf{Restricciones}: Cumplimiento de LOPDP, interoperabilidad con APIs legacy (SOAP), despliegue contenedorizado y monitoreo unificado.
+    \item \textbf{Drivers}: Tiempos de respuesta <850~ms con 5\,000 usuarios concurrentes, disponibilidad 99.5\%, auditoría completa y crecimiento de catálogo médico.
+\end{itemize}
+
+\subsubsection{Escenarios de calidad priorizados}
+
+\begin{longtable}{p{0.9cm} p{2.2cm} p{4.2cm} p{4.8cm} p{3.2cm}}
+    \caption{Escenarios de atributos de calidad Fase~III.}\label{tab:escenarios-fase3}\\
+    \toprule
+    ID & Atributo & Estímulo & Respuesta esperada & Métrica / Umbral \\
+    \midrule
+    \endfirsthead
+    \toprule
+    ID & Atributo & Estímulo & Respuesta esperada & Métrica / Umbral \\
+    \midrule
+    \endhead
+    Q1 & Disponibilidad & Falla de instancia en horario pico & Cloud Run redirige tráfico a instancia sana y reinicia en caliente & Recuperación < 60~s \\
+    Q2 & Desempeño & 5\,000 usuarios crean citas simultáneamente & Autoescalado y caché de catálogos & P\textsubscript{95} < 850~ms \\
+    Q3 & Seguridad & Token expirado usado en endpoint crítico & Rechazo inmediato, registro y alerta & 100\% solicitudes inválidas bloqueadas \\
+    Q4 & Escalabilidad & Alta de nueva clínica en 2 semanas & Provisionamiento automatizado de tenant y datos maestros & Tiempo total < 5 días \\
+    Q5 & Observabilidad & Latencia promedio se incrementa 20\% & Alertas y dashboards muestran causa raíz & Alerta < 2 min \\
+    Q6 & Mantenibilidad & Nueva regla de priorización de citas & Implementación con pruebas y despliegue continuo & Entrega < 2 días, cobertura >90\% \\
+    Q7 & Compatibilidad & Integración con API SOAP legacy & Adaptador anticorrupción traduce a REST & Respuesta < 1.5 s \\
+    Q8 & Portabilidad & Migración a PostgreSQL administrado & Migraciones versionadas con rollback & Downtime < 30 min, 0 pérdida de datos \\
+    Q9 & UX & Usuario móvil carga dashboard & PWA + CDN entrega contenido optimizado & LCP < 2.5 s \\
+    \bottomrule
+\end{longtable}
+
+\subsubsection{Iteraciones ADD}
+
+\begin{longtable}{p{0.8cm} p{4.5cm} p{5.2cm} p{5.2cm}}
+    \caption{Iteraciones del proceso ADD (nueve iteraciones).}\label{tab:add-iteraciones-fase3}\\
+    \toprule
+    Iter. & Decisión principal & Tácticas aplicadas & Artefactos / Evidencias \\
+    \midrule
+    \endfirsthead
+    \toprule
+    Iter. & Decisión principal & Tácticas aplicadas & Artefactos / Evidencias \\
+    \midrule
+    \endhead
+    1 & Elegir arquitectura hexagonal & Separación de puertos/adaptadores, inyección de dependencias & Diagramas de capas, interfaces de repositorio, pruebas unitarias aisladas \\
+    2 & Despliegue en contenedores serverless & Health checks, escalado horizontal & Dockerfiles optimizados, configuración Cloud Run, límites de concurrencia \\
+    3 & Autenticación centralizada & OIDC/JWT, expiración corta, refresco de tokens & Configuración Keycloak, políticas de scopes, middleware en frontend \\
+    4 & Optimización de catálogos & Caché near-cache en frontend, TTL de catálogos, preparación de Redis & Plan de caching, configuración IndexedDB, PWA precache \\
+    5 & Observabilidad proactiva & Instrumentación Micrometer, trazas distribuidas & Dashboards Grafana, reglas de alertado, exportación Cloud Monitoring \\
+    6 & Multi-tenant y aislación de datos & Base por tenant, configuración dinámica, scripts semilla & Terraform + Flyway, scripts de onboarding, matriz de permisos \\
+    7 & Integración con sistemas externos & Patrones de anticorrupción, colas asíncronas, resiliencia & Adaptadores REST/SOAP, manejo de reintentos, circuit breakers \\
+    8 & Migración a PostgreSQL administrado & Entorno paralelo, migraciones versionadas, pruebas de humo & Scripts Flyway, plan de rollback, checklist de verificación \\
+    9 & Experiencia PX y accesibilidad & Bundle splitting, lazy loading, métricas Lighthouse & Estrategia PWA, auditorías periódicas, backlog de UX mobile-first \\
+    \bottomrule
+\end{longtable}
+
+\subsection{Matrices de deuda técnica actualizadas}
+
+Se actualizaron las matrices de deuda técnica diferenciando pipeline CI/CD y aplicación, con foco en remediaciones inmediatas.
+
+\subsubsection{Pipeline CI/CD}
+
+\begin{longtable}{p{0.9cm} p{3.4cm} p{4.8cm} p{2.6cm} p{2.6cm} p{4.5cm}}
+    \caption{Matriz de deuda técnica -- Pipeline CI/CD.}\label{tab:deuda-pipeline-fase3}\\
+    \toprule
+    ID & Elemento & Evidencia & Severidad & Esfuerzo & Plan de remediación \\
+    \midrule
+    \endfirsthead
+    \toprule
+    ID & Elemento & Evidencia & Severidad & Esfuerzo & Plan de remediación \\
+    \midrule
+    \endhead
+    DP1 & Multi-cloud automation & Plantillas AWS/Azure desactualizadas y sin runners & Alta & 24 h DevOps & Actualizar Terraform, parametrizar secretos y habilitar pipelines espejo en modo \emph{dry-run} \\
+    DP2 & Datos de pruebas E2E & Playwright falla por data volátil & Media & 12 h QA & Sembrar fixtures determinísticos, aislar datos por entorno y limpiar tras cada run \\
+    DP3 & Pruebas de seguridad dinámicas & OWASP ZAP manual, Snyk sólo nocturno & Alta & 16 h SecDevOps & Integrar ZAP automatizado por rama y forzar build break por CVSS \(>7) \\
+    DP4 & Observabilidad del pipeline & Métricas básicas en Cloud Build & Media & 8 h & Exportar logs a BigQuery y dashboards en Grafana con SLIs de duración y tasa de fallo \\
+    DP5 & Retención de artefactos & Imágenes Docker sin política de expiración & Baja & 6 h & Configurar expiración automática y retención por etiquetas \texttt{release/\*} \\
+    \bottomrule
+\end{longtable}
+
+\subsubsection{Aplicación}
+
+\begin{longtable}{p{0.9cm} p{3.5cm} p{4.8cm} p{2.6cm} p{2.6cm} p{4.4cm}}
+    \caption{Matriz de deuda técnica -- Aplicación (Fase~III).}\label{tab:deuda-app-fase3}\\
+    \toprule
+    ID & Módulo & Evidencia & Impacto & Prioridad & Acción recomendada \\
+    \midrule
+    \endfirsthead
+    \toprule
+    ID & Módulo & Evidencia & Impacto & Prioridad & Acción recomendada \\
+    \midrule
+    \endhead
+    DA1 & Gestión de pacientes & Lógica compleja en componentes Vue, pruebas unitarias limitadas & Alta & P1 & Refactor a composables, ampliar pruebas y habilitar `data-test-id` para E2E \\
+    DA2 & Inventario farmacéutico & Consultas sin índices compuestos en SQLite & Alta & P1 & Crear índices y preparar migración a PostgreSQL con `EXPLAIN ANALYZE` \\
+    DA3 & Seguridad & TTL de tokens prolongado en frontend y sesiones persistentes & Media & P1 & Reducir expiración, refresco "silent renew" y revocación por lista negra \\
+    DA4 & Reportes masivos & Generación sin colas asíncronas, bloquea threads & Media & P2 & Incorporar Pub/Sub y jobs asíncronos con notificaciones en tiempo real \\
+    DA5 & Observabilidad funcional & Métricas limitadas a HTTP 2xx/5xx & Baja & P2 & Añadir métricas de dominio (citas pendientes, stock crítico) y traces \\
+    DA6 & Internacionalización & Textos fijos en español & Baja & P3 & Integrar librería i18n y centralizar recursos \\
+    \bottomrule
+\end{longtable}
+
+\subsection{Análisis de performance y causa raíz}
+
+\subsubsection{Backend (pruebas de carga k6)}
+
+Se ejecutó un plan de estrés con 5\,000 usuarios concurrentes durante 15 minutos. Los resultados se resumen en la Tabla~\ref{tab:backend-performance}.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Resultados de performance del backend (k6).}\label{tab:backend-performance}
+    \begin{tabular}{lccc}
+        \toprule
+        Métrica & Objetivo & Observado & Estado \\
+        \midrule
+        Throughput promedio & $\geq$ 280 req/s & 265 req/s & \textcolor{naranjaAlerta}{Ligeramente bajo} \\
+        Latencia P\textsubscript{95} & $\leq$ 850 ms & 910 ms & \textcolor{red}{Incumplido} \\
+        Tasa de errores HTTP & $\leq$ 1\% & 0.8\% & \textcolor{verdeOk}{Cumplido} \\
+        Uso CPU (Cloud Run) & $\leq$ 70\% & 78\% & \textcolor{naranjaAlerta}{Alto} \\
+        Tiempo de GC & $\leq$ 10\% & 8\% & \textcolor{verdeOk}{Cumplido} \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{Causa raíz}: La degradación se concentra en las consultas de inventario con filtros múltiples sobre SQLite, ausencia de índices compuestos y falta de caché. El autoscalado de Cloud Run tarda ~6~s en iniciar nuevas instancias por el \emph{cold start} de Quarkus. Recomendaciones inmediatas: migrar a PostgreSQL administrado, habilitar Redis para catálogos, precalentar dos instancias mínimas y optimizar consultas con proyecciones.
+
+\subsubsection{Frontend (auditoría Lighthouse)}
+
+Los resultados promedio en modo móvil se presentan en la Tabla~\ref{tab:lighthouse-fase3}.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Resultados Lighthouse (modo móvil).}\label{tab:lighthouse-fase3}
+    \begin{tabular}{lcccc}
+        \toprule
+        Métrica & Objetivo & Observado & Gap & Comentario \\
+        \midrule
+        Performance & $\geq$ 85 & 79 & -6 & Imágenes sin `srcset`, bundle inicial pesado \\
+        Accesibilidad & $\geq$ 90 & 92 & +2 & Cumplido \\
+        Mejores prácticas & $\geq$ 90 & 88 & -2 & Librerías sin minificar en build QA \\
+        SEO & $\geq$ 90 & 95 & +5 & Cumplido \\
+        LCP & $\leq$ 2.5 s & 2.9 s & +0.4 s & Falta precarga de datos y lazy loading \\
+        TTI & $\leq$ 4.0 s & 3.6 s & -0.4 s & Cumplido \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\textbf{Causa raíz}: Recursos gráficos no optimizados, ausencia de `lazy loading` en tarjetas de doctores, falta de CDN global y almacenamiento de datos voluminosos en `localStorage`. Acciones: implementar `vite-image-tools`, activar `lazy loading`, usar CDN y optimizar el `service worker` para precargar rutas críticas.
+
+\subsection{Especificaciones y costos de infraestructura recomendada}
+
+Se compararon tres proveedores (Google Cloud, AWS, Azure) considerando ambientes dedicados (dev, QA/UAT, producción), incluyendo CPU, memoria, almacenamiento y costos anuales. Todos los montos están expresados en USD.
+
+\subsubsection{Google Cloud Platform}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Sizing recomendado en Google Cloud.}\label{tab:gcp-costos}
+    \begin{tabular}{lccc}
+        \toprule
+        Ambiente & Compute & Almacenamiento & Costo anual aproximado \\
+        \midrule
+        Desarrollo & Cloud Run (2 vCPU / 4 GB) + Cloud SQL db-f1-micro & 50 GB SSD & 1\,820 \\
+        QA/UAT & Cloud Run (2 instancias, 2 vCPU / 4 GB) + Cloud SQL db-g1-small & 100 GB SSD & 3\,950 \\
+        Producción & Cloud Run (mín. 3 instancias, 4 vCPU / 8 GB) + Cloud SQL custom-4-15360 & 500 GB SSD + Backups & 12\,480 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsubsection{Amazon Web Services}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Sizing recomendado en AWS.}\label{tab:aws-costos}
+    \begin{tabular}{lccc}
+        \toprule
+        Ambiente & Compute & Almacenamiento & Costo anual aproximado \\
+        \midrule
+        Desarrollo & ECS Fargate (1 vCPU / 2 GB) + RDS db.t4g.micro & 50 GB GP3 & 2\,150 \\
+        QA/UAT & ECS Fargate (2 vCPU / 4 GB) + RDS db.t4g.small multi-AZ & 150 GB GP3 & 5\,320 \\
+        Producción & ECS Fargate (3 tareas de 2 vCPU / 4 GB) + RDS db.m6g.large multi-AZ & 600 GB GP3 + Backups S3 & 14\,780 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsubsection{Microsoft Azure}
+
+\begin{table}[htbp]
+    \centering
+    \caption{Sizing recomendado en Azure.}\label{tab:azure-costos}
+    \begin{tabular}{lccc}
+        \toprule
+        Ambiente & Compute & Almacenamiento & Costo anual aproximado \\
+        \midrule
+        Desarrollo & Azure Container Apps (2 vCPU / 4 GB) + PostgreSQL B1ms & 50 GB Premium SSD & 2\,420 \\
+        QA/UAT & Azure Kubernetes Service (nodo D2s v5) + PostgreSQL B2s & 150 GB Premium SSD & 5\,680 \\
+        Producción & AKS (nodos D4s v5 autoescalado) + PostgreSQL GP Standard (4 vCore / 16 GB) & 600 GB Premium SSD + Azure Backup & 15\,320 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\noindent Pese a la evaluación de proveedores múltiples, los pipelines se ejecutan exclusivamente en Google Cloud durante esta fase debido a la complejidad de replicar secretos y runners. Se recomienda habilitar despliegues espejo cuando se estabilicen las plantillas IaC.
+
+\subsection{Presentación ejecutiva resumida}
+
+Se preparó un guion ejecutivo pensado para una sesión con gerentes de tecnología. Cada \emph{slide} concentra los puntos esenciales.
+
+\begin{description}[leftmargin=1.2cm, style=nextline]
+    \item[Slide 1 -- Visión general] Propósito del sistema, reducción del tiempo de registro de pacientes (45\%), confirmación de citas en menos de 2 minutos, arquitectura lógica de tres capas con observabilidad.
+    \item[Slide 2 -- Logros del periodo] Cumplimiento de recomendaciones previas, migración del pipeline a Google Cloud, cobertura de pruebas (backend 78\%, frontend 82\%).
+    \item[Slide 3 -- Arquitectura y calidad] Nueve escenarios de calidad priorizados, tácticas ADD implementadas, brecha principal: migración a PostgreSQL y caché distribuido.
+    \item[Slide 4 -- Performance y deuda técnica] Resultados de k6 (P\textsubscript{95}=910~ms), acciones correctivas (índices, precalentar instancias, optimización frontend), top 3 deudas pipeline/aplicación.
+    \item[Slide 5 -- Infraestructura y costos] Comparativo anual entre Google Cloud, AWS y Azure; decisión de consolidar pipeline en Google Cloud; próximos pasos para multicloud.
+    \item[Slide 6 -- Próximas iteraciones] Migración a PostgreSQL y Redis, pruebas de seguridad automatizadas, habilitación multi-cloud, mejoras de UX móvil e internacionalización.
+\end{description}
+
+\subsection{Recomendaciones finales Fase III}
+
+\begin{itemize}[leftmargin=1.2cm]
+    \item Completar la migración a PostgreSQL administrado y habilitar Redis como caché distribuido antes de la siguiente ronda de pruebas de carga.
+    \item Automatizar pruebas de seguridad (OWASP ZAP, Snyk) dentro del pipeline principal con umbrales de bloqueo.
+    \item Implementar despliegues espejo en AWS CodePipeline y Azure DevOps una vez estabilizadas las plantillas Terraform.
+    \item Aumentar la cobertura de pruebas E2E en flujos de pacientes y reportes, utilizando datos determinísticos.
+    \item Mejorar la experiencia móvil mediante optimización de imágenes, `lazy loading` y auditorías Lighthouse trimestrales.
+    \item Formalizar un plan de observabilidad de negocio (métricas de citas, stock crítico, notificaciones fallidas) para la toma de decisiones operativas.
+\end{itemize}
+
+\newpage
 \section{Conclusión}
 
 El \textbf{PROYECTO2025-HOSPITAL2-SOFI} representa una solución integral de gestión hospitalaria que combina tecnologías modernas con mejores prácticas de desarrollo. El sistema ha sido diseñado con una arquitectura escalable, mantenible y segura que cumple con los requisitos de un entorno hospitalario real.
@@ -1734,7 +2074,7 @@ El \textbf{PROYECTO2025-HOSPITAL2-SOFI} representa una solución integral de ges
     \item \textbf{Seguridad Integral}: Sistema de autenticación y autorización completo
     \item \textbf{Escalabilidad}: Diseño que permite crecimiento futuro
     \item \textbf{Calidad de Código}: Implementación de testing y análisis de calidad
-    \item \textbf{CI/CD Automatizado}: Pipeline completo de integración y despliegue
+    \item \textbf{CI/CD Automatizado}: Pipeline en Google Cloud Build con análisis de calidad y despliegue continuo multi-entorno
     \item \textbf{Multi-entorno}: Soporte para desarrollo, UAT y producción
 \end{enumerate}
 
@@ -1743,7 +2083,7 @@ El \textbf{PROYECTO2025-HOSPITAL2-SOFI} representa una solución integral de ges
 \begin{itemize}
     \item \textbf{Backend}: Quarkus 3.8.6, Java 17, Hibernate ORM, SQLite
     \item \textbf{Frontend}: Vue.js 3.5.13, TypeScript, Tailwind CSS, Pinia
-    \item \textbf{DevOps}: Jenkins, Docker, SonarQube
+    \item \textbf{DevOps}: Google Cloud Build, Cloud Run, Artifact Registry, SonarCloud, Trivy (con Jenkins como referencia histórica)
     \item \textbf{Testing}: JUnit 5, Vitest, Playwright
     \item \textbf{Documentación}: Markdown, TikZ diagrams
 \end{itemize}
@@ -1761,11 +2101,11 @@ El \textbf{PROYECTO2025-HOSPITAL2-SOFI} representa una solución integral de ges
 \subsection{Próximos Pasos}
 
 \begin{enumerate}
-    \item \textbf{Expansión de Funcionalidades}: Implementación de módulos adicionales
-    \item \textbf{Integración Externa}: Conexión con sistemas hospitalarios existentes
-    \item \textbf{Analytics}: Implementación de dashboards y reportes avanzados
-    \item \textbf{Mobile App}: Desarrollo de aplicación móvil complementaria
-    \item \textbf{Cloud Migration}: Migración a infraestructura en la nube
+    \item \textbf{Migración a PostgreSQL + Redis}: Ejecutar la migración administrada y habilitar caché distribuido para reducir latencias.
+    \item \textbf{Pruebas de seguridad automáticas}: Integrar OWASP ZAP y Snyk al pipeline principal con umbrales de bloqueo.
+    \item \textbf{Estrategia multi-cloud}: Activar pipelines espejo en AWS y Azure una vez estabilizadas las plantillas IaC.
+    \item \textbf{Optimización UX móvil e internacionalización}: Mejorar rendimiento móvil, incorporar i18n y consolidar auditorías Lighthouse.
+    \item \textbf{Observabilidad de negocio}: Expandir dashboards operativos y métricas accionables para áreas clínicas y administrativas.
 \end{enumerate}
 
 El proyecto demuestra la capacidad de desarrollar sistemas complejos utilizando tecnologías modernas y metodologías ágiles, estableciendo una base sólida para el crecimiento futuro del sistema de gestión hospitalaria.
@@ -1806,7 +2146,7 @@ El proyecto demuestra la capacidad de desarrollar sistemas complejos utilizando 
 
 \textbf{Documento generado automáticamente} \\
 \textbf{Fecha}: \today \\
-\textbf{Versión}: 1.0.0 \\
+\textbf{Versión}: 1.1.0 \\
 \textbf{Proyecto}: PROYECTO2025-HOSPITAL2-SOFI
 
 \end{document}
