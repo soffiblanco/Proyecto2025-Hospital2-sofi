@@ -1,7 +1,7 @@
 package com.unis.service;
 
 import java.util.Arrays;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -138,21 +138,25 @@ public class ServicioServiceTest {
     }
 
     @Test
-    public void testListarSubServiciosFound() {
-        Servicio padre = new Servicio();
-        Servicio sub1 = new Servicio();
-        Servicio sub2 = new Servicio();
-        padre.subServicios = new LinkedHashSet<>(Arrays.asList(sub1, sub2));
+public void testListarSubServiciosFound() {
+    Servicio padre = new Servicio();
+    Servicio sub1 = new Servicio();
+    Servicio sub2 = new Servicio();
+    padre.subServicios = new java.util.HashSet<>(java.util.Arrays.asList(sub1, sub2));
 
-        when(servicioRepository.findById(1L)).thenReturn(padre);
+    when(servicioRepository.findById(1L)).thenReturn(padre);
 
-        List<Servicio> result = servicioService.listarSubServicios(1L);
+    List<Servicio> result = servicioService.listarSubServicios(1L);
 
-        // Verificar que la lista tiene el tamaño correcto y contiene los elementos
-        assertEquals(2, result.size());
-        assertTrue(result.contains(sub1));
-        assertTrue(result.contains(sub2));
-    }
+    // Compara por contenido, ignorando el orden
+    assertEquals(2, result.size(), "Debe devolver dos subservicios");
+    assertEquals(
+        new java.util.HashSet<>(java.util.Arrays.asList(sub1, sub2)),
+        new java.util.HashSet<>(result),
+        "Los subservicios devueltos no coinciden (ignorando orden)"
+    );
+}
+
 
     @Test
     public void testListarSubServiciosNotFound() {
