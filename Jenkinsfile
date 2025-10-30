@@ -67,72 +67,39 @@ pipeline {
 
     stage('Deploy per branch (SQLite)') {
       steps {
-script {
-  // Mapea PUERTO, VOLUMEN y DB por rama
-  def port, hostDir, dbFile, cname
-  switch (env.BRANCH_NAME) {
-    case 'dev':
-      port   = '3001'
-      hostDir= '/srv/sqlite/dev'
-      dbFile = '/data/sqlite/dev.db'
-      cname  = 'app_dev'
-      break
-    case 'uat':
-      port   = '3002'
-      hostDir= '/srv/sqlite/uat'
-      dbFile = '/data/sqlite/uat.db'
-      cname  = 'app_uat'
-      break
-    case 'master':
-      // <<— master con SU puerto y SU volumen
-      port   = '3001'    // o 3004 si ya usas 3001 en dev
-      hostDir= '/srv/sqlite/master'
-      dbFile = '/data/sqlite/master.db'
-      cname  = 'app_master'
-      break
-    case 'prod':
-      port   = '3003'
-      hostDir= '/srv/sqlite/prod'
-      dbFile = '/data/sqlite/prod.db'
-      cname  = 'app_prod'
-      break
-    default:
-      // ramas feature/* aisladas
-      port   = '3010'
-      hostDir= "/srv/sqlite/${env.BRANCH_NAME}"
-      dbFile = "/data/sqlite/${env.BRANCH_NAME}.db"
-      cname  = "app_${env.BRANCH_NAME}"
-  }
+        script {
+          // Puertos externos (uno por rama)
+          def port   = (env.BRANCH_NAME == 'dev') ? '3001' :
+                       (env.BRANCH_NAME == 'uat') ? '3002' : '3003'
 
-  sh 'docker network create appnet || true'
+          // Directorios host donde viven los .db (creados previamente en la VM)
+          def hostDir = (env.BRANCH_NAME == 'dev') ? '/srv/sqlite/dev' :
+                        (env.BRANCH_NAME == 'uat') ? '/srv/sqlite/uat' : '/srv/sqlite/prod'
 
-  // TIP: chequeo rápido de puerto en uso (solo informativo)
-  sh """
-    if ss -ltn | grep -q ":${port} "; then
-      echo "⚠️  Puerto ${port} ya en uso en host. Voy a reemplazar contenedor ${cname} si existe."
-    fi
-  """
+          // Ruta DENTRO del contenedor que Quarkus leerá por env DB_FILE
+          def dbFile  = (env.BRANCH_NAME == 'dev') ? '/data/sqlite/dev.db' :
+                        (env.BRANCH_NAME == 'uat') ? '/data/sqlite/uat.db' : '/data/sqlite/prod.db'
 
-  // Reemplaza contenedor si existe
-  sh "docker rm -f ${cname} || true"
+          def cname = "app_${env.BRANCH_NAME}"
 
-  // Asegura que exista el directorio del volumen
-  sh "mkdir -p ${hostDir}"
+          // Red para comunicar apps/Sonar/Jenkins
+          sh 'docker network create appnet || true'
 
-  // Despliegue
-  sh """
-    docker run -d --name ${cname} --restart=unless-stopped \\
-      --network appnet \\
-      -e DB_FILE='${dbFile}' \\
-      -p ${port}:${APP_PORT_INTERNAL} \\
-      -v ${hostDir}:/data/sqlite \\
-      ${IMAGE}:${env.BRANCH_NAME}
-  """
+          // Reemplaza contenedor si existe
+          sh "docker rm -f ${cname} || true"
 
-  echo "✅ Desplegado ${cname} en puerto ${port} usando DB_FILE=${dbFile}"
-}
+          // Despliegue
+          sh """
+            docker run -d --name ${cname} --restart=unless-stopped \\
+              --network appnet \\
+              -e DB_FILE='${dbFile}' \\
+              -p ${port}:${APP_PORT_INTERNAL} \\
+              -v ${hostDir}:/data/sqlite \\
+              ${IMAGE}:${env.BRANCH_NAME}
+          """
 
-
+          echo "✅ Desplegado ${cname} en puerto ${port} usando DB_FILE=${dbFile}"
+        }
       }
     }
   }
