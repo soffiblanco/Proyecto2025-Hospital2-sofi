@@ -10,9 +10,9 @@
         <collectionProp name="Arguments.arguments">
           <elementProp name="BASE_HOST" elementType="Argument"><stringProp name="Argument.value">localhost</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
           <elementProp name="BASE_PORT" elementType="Argument"><stringProp name="Argument.value">8080</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
-          <elementProp name="RAMP_UP_SEC" elementType="Argument"><stringProp name="Argument.value">120</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
-          <elementProp name="HOLD_SEC" elementType="Argument"><stringProp name="Argument.value">600</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
-          <elementProp name="THREADS" elementType="Argument"><stringProp name="Argument.value">200</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+          <elementProp name="RAMP_UP_SEC" elementType="Argument"><stringProp name="Argument.value">300</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+          <elementProp name="HOLD_SEC" elementType="Argument"><stringProp name="Argument.value">900</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
+          <elementProp name="THREADS" elementType="Argument"><stringProp name="Argument.value">5000</stringProp><stringProp name="Argument.metadata">=</stringProp></elementProp>
         </collectionProp>
       </elementProp>
       <stringProp name="TestPlan.user_define_classpath"/>

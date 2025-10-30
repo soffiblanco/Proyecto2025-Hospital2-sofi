@@ -6,13 +6,12 @@ contactPoints:
       - uid: slack_receiver
         type: slack
         settings:
-          url: __SLACK_WEBHOOK__
-          recipient: '#alerts'
+          url: ${SLACK_WEBHOOK_URL}
+          recipient: '${SLACK_CHANNEL}'
           title: 'Grafana ALERT: {{ .Title }}'
           text: '{{ .Message }}'
       - uid: email_receiver
         type: email
         settings:
-          addresses: '__ALERT_EMAILS__'
-
+          addresses: '${ALERT_EMAILS}'
 

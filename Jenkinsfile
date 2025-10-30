@@ -107,24 +107,18 @@ pipeline {
       steps {
         sh '''
           set -e
-          # Reemplaza placeholders con variables si existen en Jenkins
-          SLACK_W=${SLACK_WEBHOOK_URL:-}
-          ALERT_EMAILS_VAR=${ALERT_EMAILS:-}
-          SMTP_FROM_VAR=${SMTP_FROM:-}
-          SMTP_HOST_VAR=${SMTP_HOST:-}
-          SMTP_USER_VAR=${SMTP_USER:-}
-          SMTP_PASS_VAR=${SMTP_PASS:-}
-
           cd monitoring
-          # Solo sustituye si hay valores definidos
-          if [ -n "$SLACK_W" ]; then sed -i "s|__SLACK_WEBHOOK__|$SLACK_W|g" alertmanager/alertmanager.yml grafana/provisioning/alerting/contact-points.yaml; fi
-          if [ -n "$ALERT_EMAILS_VAR" ]; then sed -i "s|__ALERT_EMAILS__|$ALERT_EMAILS_VAR|g" alertmanager/alertmanager.yml grafana/provisioning/alerting/contact-points.yaml; fi
-          if [ -n "$SMTP_FROM_VAR" ]; then sed -i "s|__SMTP_FROM__|$SMTP_FROM_VAR|g" alertmanager/alertmanager.yml; fi
-          if [ -n "$SMTP_HOST_VAR" ]; then sed -i "s|__SMTP_HOST__|$SMTP_HOST_VAR|g" alertmanager/alertmanager.yml; fi
-          if [ -n "$SMTP_USER_VAR" ]; then sed -i "s|__SMTP_USER__|$SMTP_USER_VAR|g" alertmanager/alertmanager.yml; fi
-          if [ -n "$SMTP_PASS_VAR" ]; then sed -i "s|__SMTP_PASS__|$SMTP_PASS_VAR|g" alertmanager/alertmanager.yml; fi
+          export SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:?Debe definir SLACK_WEBHOOK_URL}
+          export ALERT_EMAILS=${ALERT_EMAILS:?Debe definir ALERT_EMAILS}
+          export SMTP_FROM=${SMTP_FROM:?Debe definir SMTP_FROM}
+          export SMTP_HOST=${SMTP_HOST:?Debe definir SMTP_HOST}
+          export SMTP_USER=${SMTP_USER:-}
+          export SMTP_PASS=${SMTP_PASS:-}
+          export SLACK_CHANNEL=${SLACK_CHANNEL:-#alerts}
+          export SMTP_PORT=${SMTP_PORT:-587}
 
-          docker compose up -d
+          bash render-config.sh
+          docker compose up -d --remove-orphans
         '''
       }
     }

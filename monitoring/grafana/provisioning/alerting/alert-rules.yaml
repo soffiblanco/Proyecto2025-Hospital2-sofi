@@ -33,7 +33,7 @@ groups:
             datasourceUid: PROMDS
             model:
               editorMode: code
-              expr: histogram_quantile(0.95, sum(rate(probe_http_duration_seconds_bucket[5m])) by (le))
+              expr: histogram_quantile(0.95, sum(rate(probe_http_duration_seconds_bucket{job="blackbox-http"}[5m])) by (le, instance))
               intervalMs: 60000
               legendFormat: p95
               maxDataPoints: 43200
@@ -46,7 +46,7 @@ groups:
         isPaused: false
 
       - uid: grafana_http_availability
-        title: HTTP Availability < 90%
+        title: HTTP Availability < 95%
         condition: A
         data:
           - refId: A
@@ -60,7 +60,7 @@ groups:
               queryType: timeSeriesQuery
         for: 5m
         annotations:
-          summary: Disponibilidad HTTP < 90% (5m)
+          summary: Disponibilidad HTTP < 95% (5m)
         labels:
           severity: critical
         isPaused: false
@@ -73,16 +73,36 @@ groups:
             datasourceUid: PROMDS
             model:
               editorMode: code
-              expr: container_memory_usage_bytes{container_label_io_kubernetes_container_name="backend"}
+              expr: container_memory_usage_bytes{name=~"app_(dev|uat|prod)"}
               intervalMs: 60000
               legendFormat: mem
               maxDataPoints: 43200
               queryType: timeSeriesQuery
         for: 10m
         annotations:
-          summary: Memoria backend > ~500MB (10m)
+          summary: Memoria backend > ~600MB (10m)
         labels:
           severity: warning
+        isPaused: false
+
+      - uid: grafana_backend_memory_percent
+        title: Backend Memory > 15% host
+        condition: A
+        data:
+          - refId: A
+            datasourceUid: PROMDS
+            model:
+              editorMode: code
+              expr: 100 * sum(container_memory_usage_bytes{name=~"app_(dev|uat|prod)"}) / sum(node_memory_MemTotal_bytes)
+              intervalMs: 60000
+              legendFormat: "uso%"
+              maxDataPoints: 43200
+              queryType: timeSeriesQuery
+        for: 5m
+        annotations:
+          summary: Uso combinado de memoria de backend supera 15% del host (5m)
+        labels:
+          severity: critical
         isPaused: false
 
 

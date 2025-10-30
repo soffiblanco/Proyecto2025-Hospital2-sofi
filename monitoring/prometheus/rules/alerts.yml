@@ -1,36 +1,36 @@
 groups:
   - name: app-alerts
     rules:
-      - alert: HighCPUHost
-        expr: (100 - (avg by(instance)(irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)) > 70
+      - alert: HostCPUHigh
+        expr: 100 - (avg by(instance)(irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 70
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "CPU del host > 70% por 5m"
+          summary: "CPU del host > 70% durante 5 minutos"
 
-      - alert: BackendProbeFailing
-        expr: avg_over_time(probe_success{job="blackbox-http"}[5m]) < 0.9
+      - alert: BackendAvailabilityLow
+        expr: avg_over_time(probe_success{job="blackbox-http"}[5m]) < 0.95
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "Disponibilidad HTTP < 90% (5m)"
+          summary: "Disponibilidad HTTP < 95% en los últimos 5 minutos"
 
-      - alert: HighHTTPDurationP95
-        expr: histogram_quantile(0.95, sum(rate(probe_http_duration_seconds_bucket[5m])) by (le)) > 1
-        for: 10m
-        labels:
-          severity: critical
-        annotations:
-          summary: "p95 HTTP > 1s (10m)"
-
-      - alert: ContainerHighMemoryBackend
-        expr: container_memory_usage_bytes{container_label_io_kubernetes_container_name="backend"} > 500000000
+      - alert: BackendLatencyHighP95
+        expr: histogram_quantile(0.95, sum(rate(probe_http_duration_seconds_bucket{job="blackbox-http"}[5m])) by (le, instance)) > 1
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Memoria backend > ~500MB (10m)"
+          summary: "p95 HTTP > 1s durante 10 minutos"
+
+      - alert: BackendMemoryHigh
+        expr: max by(name) (container_memory_usage_bytes{name=~"app_(dev|uat|prod)"}) > 600000000
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memoria backend > ~600MB"
 
 

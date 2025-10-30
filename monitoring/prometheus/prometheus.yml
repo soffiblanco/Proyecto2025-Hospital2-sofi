@@ -17,11 +17,16 @@ scrape_configs:
 
   - job_name: 'node'
     static_configs:
-      - targets: [ 'localhost:9100' ]  # node-exporter in host network
+      - targets: [ 'node-exporter:9100' ]
 
   - job_name: 'cadvisor'
     static_configs:
       - targets: [ 'cadvisor:8080' ]
+
+  - job_name: 'jenkins'
+    metrics_path: /prometheus
+    static_configs:
+      - targets: [ 'jenkins:8080' ]
 
   - job_name: 'blackbox-http'
     metrics_path: /probe
@@ -29,14 +34,12 @@ scrape_configs:
       module: [ http_2xx ]
     static_configs:
       - targets:
-          - http://host.docker.internal:8080/api/servicios
-          - http://host.docker.internal:8080/api/page-content/home
-          - http://host.docker.internal:3001/api/servicios
-          - http://host.docker.internal:3001/api/page-content/home
-          - http://host.docker.internal:3002/api/servicios
-          - http://host.docker.internal:3002/api/page-content/home
-          - http://host.docker.internal:3003/api/servicios
-          - http://host.docker.internal:3003/api/page-content/home
+          - http://app_dev:8080/api/servicios
+          - http://app_dev:8080/api/page-content/home
+          - http://app_uat:8080/api/servicios
+          - http://app_uat:8080/api/page-content/home
+          - http://app_prod:8080/api/servicios
+          - http://app_prod:8080/api/page-content/home
     relabel_configs:
       - source_labels: [ __address__ ]
         target_label: __param_target
