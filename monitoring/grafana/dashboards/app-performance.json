@@ -1,0 +1,38 @@
+{
+  "title": "App Performance",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "HTTP Availability (blackbox)",
+      "targets": [
+        { "expr": "probe_success{job=\"blackbox-http\"}", "legendFormat": "{{instance}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "HTTP p95 duration (s)",
+      "targets": [
+        { "expr": "histogram_quantile(0.95, sum(rate(probe_http_duration_seconds_bucket[5m])) by (le, instance))", "legendFormat": "{{instance}}" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Container CPU % (backend)",
+      "targets": [
+        { "expr": "sum by (container_label_io_kubernetes_container_name) (rate(container_cpu_usage_seconds_total{container_label_io_kubernetes_container_name=\"backend\"}[2m])) * 100", "legendFormat": "CPU %" }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Container Memory (backend)",
+      "targets": [
+        { "expr": "container_memory_usage_bytes{container_label_io_kubernetes_container_name=\"backend\"}", "legendFormat": "bytes" }
+      ]
+    }
+  ]
+}
+
+

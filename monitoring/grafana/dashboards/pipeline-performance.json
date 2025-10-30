@@ -1,0 +1,30 @@
+{
+  "title": "Pipeline Performance",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Jenkins up (requires Prometheus plugin)",
+      "targets": [ { "expr": "up{job=\"jenkins\"}", "legendFormat": "up" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Scrape latency to Jenkins (blackbox optional)",
+      "targets": [ { "expr": "sum by (instance) (rate(probe_duration_seconds[5m]))", "legendFormat": "{{instance}}" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Host CPU % (node-exporter)",
+      "targets": [ { "expr": "100 - (avg by(instance)(irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)", "legendFormat": "CPU %" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Host Load 1m",
+      "targets": [ { "expr": "node_load1", "legendFormat": "load1" } ]
+    }
+  ]
+}
+
+
