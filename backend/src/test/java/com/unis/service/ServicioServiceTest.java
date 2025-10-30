@@ -138,18 +138,25 @@ public class ServicioServiceTest {
     }
 
     @Test
-    public void testListarSubServiciosFound() {
-        Servicio padre = new Servicio();
-        Servicio sub1 = new Servicio();
-        Servicio sub2 = new Servicio();
-        padre.subServicios = new HashSet<>(Arrays.asList(sub1, sub2));
+public void testListarSubServiciosFound() {
+    Servicio padre = new Servicio();
+    Servicio sub1 = new Servicio();
+    Servicio sub2 = new Servicio();
+    padre.subServicios = new java.util.HashSet<>(java.util.Arrays.asList(sub1, sub2));
 
-        when(servicioRepository.findById(1L)).thenReturn(padre);
+    when(servicioRepository.findById(1L)).thenReturn(padre);
 
-        List<Servicio> result = servicioService.listarSubServicios(1L);
+    List<Servicio> result = servicioService.listarSubServicios(1L);
 
-    assertIterableEquals(Arrays.asList(sub1, sub2), result);
-    }
+    // Compara por contenido, ignorando el orden
+    assertEquals(2, result.size(), "Debe devolver dos subservicios");
+    assertEquals(
+        new java.util.HashSet<>(java.util.Arrays.asList(sub1, sub2)),
+        new java.util.HashSet<>(result),
+        "Los subservicios devueltos no coinciden (ignorando orden)"
+    );
+}
+
 
     @Test
     public void testListarSubServiciosNotFound() {
