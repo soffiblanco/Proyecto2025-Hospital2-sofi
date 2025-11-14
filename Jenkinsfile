@@ -7,12 +7,12 @@ pipeline {
   }
 
   environment {
-    IMAGE          = 'miapp'         // imagen local por rama: miapp:<branch>
-    APP_PORT_INTERNAL = '8080'       // Quarkus expone 8080 dentro del contenedor
-    SONARQUBE_ENV  = 'SonarLocal'    // nombre del servidor Sonar en Jenkins
+    IMAGE          = 'miapp'         
+    APP_PORT_INTERNAL = '8080'       
+    SONARQUBE_ENV  = 'SonarLocal'    
   }
 
-  triggers { pollSCM('H/2 * * * *') } // sin webhooks
+  triggers { pollSCM('H/2 * * * *') } 
 
   stages {
 
@@ -60,7 +60,7 @@ pipeline {
 
     stage('Docker Build (backend/Dockerfile.jvm)') {
       steps {
-        // Usa TU Dockerfile dentro de backend y el contexto "backend/"
+       
         sh "docker build -f backend/Dockerfile.jvm -t ${IMAGE}:${env.BRANCH_NAME} backend"
       }
     }
@@ -108,10 +108,10 @@ pipeline {
         sh '''
           set -e
           cd monitoring
-          export SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:?Debe definir SLACK_WEBHOOK_URL}
-          export ALERT_EMAILS=${ALERT_EMAILS:?Debe definir ALERT_EMAILS}
-          export SMTP_FROM=${SMTP_FROM:?Debe definir SMTP_FROM}
-          export SMTP_HOST=${SMTP_HOST:?Debe definir SMTP_HOST}
+          export SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:? SLACK_WEBHOOK_URL}
+          export ALERT_EMAILS=${ALERT_EMAILS:? ALERT_EMAILS}
+          export SMTP_FROM=${SMTP_FROM:? SMTP_FROM}
+          export SMTP_HOST=${SMTP_HOST:? SMTP_HOST}
           export SMTP_USER=${SMTP_USER:-}
           export SMTP_PASS=${SMTP_PASS:-}
           export SLACK_CHANNEL=${SLACK_CHANNEL:-#alerts}

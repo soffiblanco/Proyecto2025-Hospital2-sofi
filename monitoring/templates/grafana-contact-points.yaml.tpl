@@ -15,3 +15,4 @@ contactPoints:
         settings:
           addresses: '${ALERT_EMAILS}'
 
+
