@@ -11,34 +11,32 @@ pipeline {
     APP_PORT_INTERNAL = '8080'
     SONARQUBE_ENV     = 'SonarLocal'
     MAIL_TO           = 'msblanco@unis.edu.gt, mariasofiablanco9@gmail.com'
+
+    // Base de datos SQLite SIN sudo, dentro de JENKINS_HOME
+    SQLITE_BASE = "${env.JENKINS_HOME ?: '/var/jenkins_home'}/sqlite"
+    SQLITE_DIR  = "${SQLITE_BASE}/${env.BRANCH_NAME}"  // prod/dev/uat/master
   }
 
   triggers { pollSCM('H/2 * * * *') }
 
   stages {
 
-    stage('Prepare DB dir') {
-      when { anyOf { branch 'dev'; branch 'uat'; branch 'master'; branch 'prod' } } // <-- incluye prod
-      steps {
-        script {
-          def hostDir = (env.BRANCH_NAME == 'dev') ? '/srv/sqlite/dev'
-                      : (env.BRANCH_NAME == 'uat') ? '/srv/sqlite/uat'
-                      : (env.BRANCH_NAME == 'prod') ? '/srv/sqlite/prod'
-                      : '/srv/sqlite/prod'
-          sh """
-            set -e
-            sudo mkdir -p ${hostDir}
-            sudo chown \$(id -u):\$(id -g) ${hostDir}
-            [ -f ${hostDir}/${env.BRANCH_NAME}.db ] || touch ${hostDir}/${env.BRANCH_NAME}.db
-          """
-        }
-      }
-    }
-
     stage('Checkout') {
       steps { checkout scm }
-      post {
-        failure { notify('FALLÓ', 'Checkout del repo') }
+      post { failure { notify('FALLÓ', 'Checkout del repo') } }
+    }
+
+    stage('Prepare DB dir') {
+      when { anyOf { branch 'dev'; branch 'uat'; branch 'master'; branch 'prod' } }
+      steps {
+        sh '''
+          set -e
+          echo "JENKINS_HOME=${JENKINS_HOME}"
+          echo "Creando directorio SQLite: ${SQLITE_DIR}"
+          mkdir -p "${SQLITE_DIR}"
+          chmod 777 "${SQLITE_DIR}" || true
+          ls -ld "${SQLITE_DIR}"
+        '''
       }
     }
 
@@ -72,62 +70,57 @@ pipeline {
           '''
         }
       }
-      post {
-        failure { notify('FALLÓ', 'Ejecución del análisis SonarQube') }
-      }
+      post { failure { notify('FALLÓ', 'Ejecución del análisis SonarQube') } }
     }
 
     stage('Quality Gate') {
       steps {
-        timeout(time: 15, unit: 'MINUTES') { // <-- más margen
-          // Requiere WEBHOOK en SonarQube -> http(s)://<jenkins>/sonarqube-webhook/
+        timeout(time: 15, unit: 'MINUTES') {
+          // Requiere webhook en SonarQube -> http(s)://<jenkins>/sonarqube-webhook/
           waitForQualityGate abortPipeline: true
         }
       }
-      post {
-        failure { notify('FALLÓ', 'Quality Gate de SonarQube (deuda técnica o bugs / timeout)') }
-      }
+      post { failure { notify('FALLÓ', 'Quality Gate de SonarQube (deuda técnica/bugs o timeout)') } }
     }
 
     stage('Docker Build (backend/Dockerfile.jvm)') {
       steps {
+        // MUY IMPORTANTE: el contexto es "backend", por eso el Dockerfile
+        // debe usar rutas SIN el prefijo "backend/"
         sh "docker build -f backend/Dockerfile.jvm -t ${IMAGE}:${env.BRANCH_NAME} backend"
       }
-      post {
-        failure { notify('FALLÓ', 'Docker build') }
-      }
+      post { failure { notify('FALLÓ', 'Docker build') } }
     }
 
     stage('Deploy per branch (SQLite)') {
       steps {
         script {
-          def port    = (env.BRANCH_NAME == 'dev') ? '3001'
-                      : (env.BRANCH_NAME == 'uat') ? '3002'
-                      : '3003'
-          def hostDir = (env.BRANCH_NAME == 'dev') ? '/srv/sqlite/dev'
-                      : (env.BRANCH_NAME == 'uat') ? '/srv/sqlite/uat'
-                      : '/srv/sqlite/prod'
-          def dbFile  = (env.BRANCH_NAME == 'dev') ? '/data/sqlite/dev.db'
-                      : (env.BRANCH_NAME == 'uat') ? '/data/sqlite/uat.db'
-                      : '/data/sqlite/prod.db'
+          def port = (env.BRANCH_NAME == 'dev') ? '3001'
+                    : (env.BRANCH_NAME == 'uat') ? '3002'
+                    : '3003' // master/prod
+
           def cname = "app_${env.BRANCH_NAME}"
 
-          sh 'docker network create appnet || true'
+          sh '''
+            set -e
+            docker network create appnet || true
+          '''
+
           sh "docker rm -f ${cname} || true"
+
+          // Montamos SQLITE_DIR como /data y forzamos la URL de SQLite
           sh """
-            docker run -d --name ${cname} --restart=unless-stopped \
-              --network appnet \
-              -e DB_FILE='${dbFile}' \
-              -p ${port}:${APP_PORT_INTERNAL} \
-              -v ${hostDir}:/data/sqlite \
+            docker run -d --name ${cname} --restart=unless-stopped \\
+              --network appnet \\
+              -p ${port}:${APP_PORT_INTERNAL} \\
+              -v "${SQLITE_DIR}:/data" \\
+              -e QUARKUS_DATASOURCE_JDBC_URL="jdbc:sqlite:/data/app.db" \\
               ${IMAGE}:${env.BRANCH_NAME}
           """
-          echo "✅ Desplegado ${cname} en puerto ${port} usando DB_FILE=${dbFile}"
+          echo "✅ Desplegado ${cname} en puerto ${port} con DB en ${SQLITE_DIR} -> /data/app.db"
         }
       }
-      post {
-        failure { notify('FALLÓ', 'Despliegue por rama') }
-      }
+      post { failure { notify('FALLÓ', 'Despliegue por rama') } }
     }
 
     stage('Start Monitoring Stack') {
