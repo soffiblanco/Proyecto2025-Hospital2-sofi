@@ -180,7 +180,7 @@ pipeline {
 
   post {
     success { notify('OK', 'Pipeline completado') }
-    failure { /* las etapas ya notifican; esto es catch-all */ }
+    failure { notify('FALLÓ', 'fallo global del pipeline') }
     always  { sh "docker ps --format 'table {{.Names}}\\t{{.Ports}}\\t{{.Status}}'" }
   }
 }
