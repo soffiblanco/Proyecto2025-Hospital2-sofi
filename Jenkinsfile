@@ -7,25 +7,24 @@ pipeline {
   }
 
   environment {
-    IMAGE              = 'miapp'
-    APP_PORT_INTERNAL  = '8080'
-    SONARQUBE_ENV      = 'SonarLocal'
-    MAIL_TO            = 'msblanco@unis.edu.gt, mariasofiablanco9@gmail.com'
+    IMAGE             = 'miapp'
+    APP_PORT_INTERNAL = '8080'
+    SONARQUBE_ENV     = 'SonarLocal'
+    MAIL_TO           = 'msblanco@unis.edu.gt, mariasofiablanco9@gmail.com'
   }
 
-  triggers {
-    pollSCM('H/2 * * * *')
-  }
+  triggers { pollSCM('H/2 * * * *') }
 
   stages {
 
     stage('Prepare DB dir') {
-      when { anyOf { branch 'dev'; branch 'uat'; branch 'master' } }
+      when { anyOf { branch 'dev'; branch 'uat'; branch 'master'; branch 'prod' } } // <-- incluye prod
       steps {
         script {
           def hostDir = (env.BRANCH_NAME == 'dev') ? '/srv/sqlite/dev'
-                        : (env.BRANCH_NAME == 'uat') ? '/srv/sqlite/uat'
-                        : '/srv/sqlite/prod'
+                      : (env.BRANCH_NAME == 'uat') ? '/srv/sqlite/uat'
+                      : (env.BRANCH_NAME == 'prod') ? '/srv/sqlite/prod'
+                      : '/srv/sqlite/prod'
           sh """
             set -e
             sudo mkdir -p ${hostDir}
@@ -80,12 +79,13 @@ pipeline {
 
     stage('Quality Gate') {
       steps {
-        timeout(time: 5, unit: 'MINUTES') {
+        timeout(time: 15, unit: 'MINUTES') { // <-- más margen
+          // Requiere WEBHOOK en SonarQube -> http(s)://<jenkins>/sonarqube-webhook/
           waitForQualityGate abortPipeline: true
         }
       }
       post {
-        failure { notify('FALLÓ', 'Quality Gate de SonarQube (deuda técnica o bugs)') }
+        failure { notify('FALLÓ', 'Quality Gate de SonarQube (deuda técnica o bugs / timeout)') }
       }
     }
 
@@ -102,14 +102,14 @@ pipeline {
       steps {
         script {
           def port    = (env.BRANCH_NAME == 'dev') ? '3001'
-                        : (env.BRANCH_NAME == 'uat') ? '3002'
-                        : '3003'
+                      : (env.BRANCH_NAME == 'uat') ? '3002'
+                      : '3003'
           def hostDir = (env.BRANCH_NAME == 'dev') ? '/srv/sqlite/dev'
-                        : (env.BRANCH_NAME == 'uat') ? '/srv/sqlite/uat'
-                        : '/srv/sqlite/prod'
+                      : (env.BRANCH_NAME == 'uat') ? '/srv/sqlite/uat'
+                      : '/srv/sqlite/prod'
           def dbFile  = (env.BRANCH_NAME == 'dev') ? '/data/sqlite/dev.db'
-                        : (env.BRANCH_NAME == 'uat') ? '/data/sqlite/uat.db'
-                        : '/data/sqlite/prod.db'
+                      : (env.BRANCH_NAME == 'uat') ? '/data/sqlite/uat.db'
+                      : '/data/sqlite/prod.db'
           def cname = "app_${env.BRANCH_NAME}"
 
           sh 'docker network create appnet || true'
@@ -135,7 +135,6 @@ pipeline {
         sh '''
           set -e
           cd monitoring
-
           export SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:?SLACK_WEBHOOK_URL}
           export ALERT_EMAILS=${ALERT_EMAILS:?ALERT_EMAILS}
           export SMTP_FROM=${SMTP_FROM:?SMTP_FROM}
@@ -144,7 +143,6 @@ pipeline {
           export SMTP_PASS=${SMTP_PASS:-}
           export SLACK_CHANNEL=${SLACK_CHANNEL:-#alerts}
           export SMTP_PORT=${SMTP_PORT:-587}
-
           bash render-config.sh
           docker compose up -d --remove-orphans
         '''
@@ -176,11 +174,11 @@ pipeline {
         '''
       }
     }
-  } // end stages
+  }
 
   post {
     success { notify('OK', 'Pipeline completado') }
-    failure { notify('FALLÓ', 'fallo global del pipeline') }
+    failure { notify('FALLÓ', 'Fallo global del pipeline (catch-all)') }
     always  { sh "docker ps --format 'table {{.Names}}\\t{{.Ports}}\\t{{.Status}}'" }
   }
 }
