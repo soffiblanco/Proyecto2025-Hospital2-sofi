@@ -1,23 +1,24 @@
 # ---------- Build ----------
     FROM eclipse-temurin:21-jdk AS build
     WORKDIR /app
-    # Copiamos POM y wrapper DESDE backend/
-    COPY backend/pom.xml .
-    COPY backend/mvnw .
-    COPY backend/mvnw.cmd .
-    COPY backend/.mvn/ .mvn/
+    
+    # Todo lo que copies aquí es relativo a LA CARPETA backend/
+    COPY pom.xml .
+    COPY mvnw .
+    COPY mvnw.cmd .
+    COPY .mvn/ .mvn/
     
     RUN chmod +x mvnw && ./mvnw -B -q -DskipTests dependency:go-offline
     
-    # Código
-    COPY backend/src ./src
+    # Código fuente (también relativo a backend/)
+    COPY src ./src
     RUN ./mvnw -B -DskipTests package
     
     # ---------- Runtime ----------
     FROM eclipse-temurin:21-jre
     WORKDIR /work
     
-    # Quarkus 3 por defecto genera fast-jar en target/quarkus-app/
+    # Quarkus 3 genera fast-jar en target/quarkus-app/
     COPY --from=build /app/target/quarkus-app/ /work/
     EXPOSE 8080
     ENTRYPOINT ["java","-jar","/work/quarkus-run.jar"]
