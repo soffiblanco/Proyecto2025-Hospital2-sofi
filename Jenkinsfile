@@ -126,7 +126,7 @@ stage('Start Monitoring Stack') {
       usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
     ]) {
       script {
-        // Defaults en Groovy (sin líos con # ni ${...})
+        // Defaults en Groovy (sin ${...} del shell)
         def slackChannel = (env.SLACK_CHANNEL?.trim()) ? env.SLACK_CHANNEL.trim() : '#alerts'
         def smtpFrom     = (env.SMTP_FROM?.trim()) ? env.SMTP_FROM.trim() : 'alerts@example.com'
         def smtpHost     = (env.SMTP_HOST?.trim()) ? env.SMTP_HOST.trim() : 'smtp.example.com'
@@ -136,7 +136,7 @@ stage('Start Monitoring Stack') {
 
         sh """
           set -e
-          # 1) Renderizar templates con envsubst dentro de Alpine (trae gettext)
+          # Renderizar templates con envsubst dentro de Alpine (trae gettext)
           docker run --rm \\
             -e SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}" \\
             -e ALERT_EMAILS="${alertEmails}" \\
@@ -150,13 +150,11 @@ stage('Start Monitoring Stack') {
               set -e
               apk add --no-cache gettext
               cd /w
-              # Renderiza alertmanager.yml desde el .tpl
               envsubst < alertmanager.yml.tpl > alertmanager.yml
-              # Si tienes más .tpl, repite aquí:
+              # Si tienes más .tpl, repite:
               # envsubst < prometheus.yml.tpl > prometheus.yml
             '
 
-          # 2) Levantar el stack
           cd "${MON_DIR}"
           docker compose up -d --remove-orphans
         """
