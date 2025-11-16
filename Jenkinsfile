@@ -133,32 +133,29 @@ stage('Start Monitoring Stack') {
       usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
     ]) {
       sh '''
-        set -e
+        set -Eeuo pipefail
 
         MON_DIR="$WORKSPACE/monitoring"
         echo "WORKSPACE = $WORKSPACE"
         echo "MON_DIR   = $MON_DIR"
 
-        # 1) Verificaciones
-        if [ ! -d "$MON_DIR" ]; then
-          echo "❌ No existe $MON_DIR"; ls -la "$WORKSPACE"; exit 1
-        fi
+        # 1) Verifica que exista la carpeta de monitoreo
+        [ -d "$MON_DIR" ] || { echo "❌ No existe $MON_DIR"; ls -la "$WORKSPACE"; exit 1; }
 
-        # Busca el template en cualquier subcarpeta
-        TPL_PATH="$(find "$MON_DIR" -type f -name 'alertmanager.yml.tpl' -print -quit || true)"
-        if [ -z "$TPL_PATH" ]; then
-          echo "❌ No se encontró alertmanager.yml.tpl dentro de $MON_DIR"
-          echo "Contenido:"
-          find "$MON_DIR" -maxdepth 3 -type f | sed 's|^|  - |'
-          exit 1
-        fi
-        echo "Template encontrado: $TPL_PATH"
+        echo "Estructura de monitoring:"
+        find "$MON_DIR" -maxdepth 3 -type d -print | sed "s|^|  - |"
 
-        # 2) Carpeta de salida (siempre dentro del workspace, no en /)
+        # 2) Localiza el template (en cualquier subcarpeta, p.ej. monitoring/templates/)
+        TPL_PATH="$(find "$MON_DIR" -maxdepth 3 -type f -name 'alertmanager.yml.tpl' -print -quit || true)"
+        [ -n "$TPL_PATH" ] || { echo "❌ No se encontró alertmanager.yml.tpl dentro de $MON_DIR"; exit 1; }
+        echo "Template encontrado en: $TPL_PATH"
+
+        # 3) Directorio de salida
         OUT_DIR="$MON_DIR/generated"
         mkdir -p "$OUT_DIR"
+        chmod 777 "$OUT_DIR"
 
-        # 3) Render del template (montamos SOLO la carpeta del template y la carpeta de salida)
+        # 4) Render del template con envsubst dentro de Alpine
         docker run --rm \
           -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
           -e ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}" \
@@ -170,21 +167,22 @@ stage('Start Monitoring Stack') {
           -e SMTP_PORT="${SMTP_PORT:-587}" \
           -v "$(dirname "$TPL_PATH"):/tpl:ro" \
           -v "$OUT_DIR:/out" \
-          alpine:3.20 sh -c '
+          alpine:3.20 sh -lc '
             set -e
             apk add --no-cache gettext >/dev/null
             envsubst < /tpl/alertmanager.yml.tpl > /out/alertmanager.yml
-            echo "--- alertmanager.yml (head) ---"
+            chmod 644 /out/alertmanager.yml
+            echo "--- alertmanager.yml (preview) ---"
             head -n 30 /out/alertmanager.yml || true
           '
 
-        # 4) Levantar stack de monitoreo
-        cd "$MON_DIR"
-        docker compose -f docker-compose.monitor.yml up -d --remove-orphans
+        # 5) Levantar stack de monitoreo con el compose del repo
+        docker compose -f "$MON_DIR/docker-compose.monitor.yml" up -d --remove-orphans
       '''
     }
   }
 }
+
 
 
 
