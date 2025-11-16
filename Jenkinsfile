@@ -136,26 +136,27 @@ stage('Start Monitoring Stack') {
         set -Eeuo pipefail
 
         MON_DIR="$WORKSPACE/monitoring"
+        TPL_DIR="$MON_DIR/templates"
+        TPL_FILE="$TPL_DIR/alertmanager.yml.tpl"
+        OUT_DIR="$MON_DIR/generated"
+        COMPOSE_FILE="$MON_DIR/docker-compose.yml"
+
         echo "WORKSPACE = $WORKSPACE"
         echo "MON_DIR   = $MON_DIR"
+        echo "TPL_FILE  = $TPL_FILE"
+        echo "OUT_DIR   = $OUT_DIR"
+        echo "COMPOSE   = $COMPOSE_FILE"
 
-        # 1) Verifica que exista la carpeta de monitoreo
-        [ -d "$MON_DIR" ] || { echo "❌ No existe $MON_DIR"; ls -la "$WORKSPACE"; exit 1; }
+        # 1) Validaciones de estructura
+        [ -d "$MON_DIR" ] || { echo "❌ No existe $MON_DIR"; exit 1; }
+        [ -f "$TPL_FILE" ] || { echo "❌ No existe template: $TPL_FILE"; ls -la "$TPL_DIR"; exit 1; }
+        [ -f "$COMPOSE_FILE" ] || { echo "❌ No existe compose: $COMPOSE_FILE"; exit 1; }
 
-        echo "Estructura de monitoring:"
-        find "$MON_DIR" -maxdepth 3 -type d -print | sed "s|^|  - |"
-
-        # 2) Localiza el template (en cualquier subcarpeta, p.ej. monitoring/templates/)
-        TPL_PATH="$(find "$MON_DIR" -maxdepth 3 -type f -name 'alertmanager.yml.tpl' -print -quit || true)"
-        [ -n "$TPL_PATH" ] || { echo "❌ No se encontró alertmanager.yml.tpl dentro de $MON_DIR"; exit 1; }
-        echo "Template encontrado en: $TPL_PATH"
-
-        # 3) Directorio de salida
-        OUT_DIR="$MON_DIR/generated"
+        # 2) Directorio de salida
         mkdir -p "$OUT_DIR"
         chmod 777 "$OUT_DIR"
 
-        # 4) Render del template con envsubst dentro de Alpine
+        # 3) Render del template con envsubst dentro de Alpine
         docker run --rm \
           -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
           -e ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}" \
@@ -165,23 +166,26 @@ stage('Start Monitoring Stack') {
           -e SMTP_PASS="$SMTP_PASS" \
           -e SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}" \
           -e SMTP_PORT="${SMTP_PORT:-587}" \
-          -v "$(dirname "$TPL_PATH"):/tpl:ro" \
+          -v "$TPL_DIR:/tpl:ro" \
           -v "$OUT_DIR:/out" \
           alpine:3.20 sh -lc '
             set -e
             apk add --no-cache gettext >/dev/null
-            envsubst < /alertmanager.yml.tpl > /out/alertmanager.yml
+            envsubst < /tpl/alertmanager.yml.tpl > /out/alertmanager.yml
             chmod 644 /out/alertmanager.yml
             echo "--- alertmanager.yml (preview) ---"
             head -n 30 /out/alertmanager.yml || true
           '
 
-        # 5) Levantar stack de monitoreo con el compose del repo
-        docker compose -f "$MON_DIR/docker-compose.monitor.yml" up -d --remove-orphans
+        # 4) Levantar/actualizar la pila de monitoreo
+        docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
+
+        echo "✅ Monitoring stack actualizado."
       '''
     }
   }
 }
+
 
 
 
