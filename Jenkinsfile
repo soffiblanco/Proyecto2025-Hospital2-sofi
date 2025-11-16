@@ -184,9 +184,6 @@ stage('Start Monitoring Stack') {
 }
 
 
-
-
-
     stage('Stress test (k6 via Docker)') {
       when { expression { fileExists('load-tests/k6/stress.js') } }
       steps {
