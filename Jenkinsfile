@@ -157,7 +157,32 @@ stage('Start Monitoring Stack') {
         chmod 777 "$OUT_DIR"
 
         # 3) Render del template con envsubst dentro de Alpine
-        docker run --rm \
+docker run --rm \
+  -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
+  -e ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}" \
+  -e SMTP_FROM="${SMTP_FROM:-alerts@example.com}" \
+  -e SMTP_HOST="${SMTP_HOST:-smtp.example.com}" \
+  -e SMTP_USER="$SMTP_USER" \
+  -e SMTP_PASS="$SMTP_PASS" \
+  -e SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}" \
+  -e SMTP_PORT="${SMTP_PORT:-587}" \
+  -v "$MON_DIR:/w" \
+  alpine:3.20 sh -lc '
+    set -Eeuo pipefail
+    apk add --no-cache gettext >/dev/null
+
+    echo "Contenido en /w:"
+    ls -la /w
+    echo "Contenido en /w/templates:"
+    ls -la /w/templates || true
+
+    # Render
+    envsubst < /w/templates/alertmanager.yml.tpl > /w/generated/alertmanager.yml
+    chmod 644 /w/generated/alertmanager.yml
+    echo "--- alertmanager.yml (preview) ---"
+    head -n 30 /w/generated/alertmanager.yml || true
+  '
+
           -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
           -e ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}" \
           -e SMTP_FROM="${SMTP_FROM:-alerts@example.com}" \
@@ -177,6 +202,7 @@ stage('Start Monitoring Stack') {
             head -n 30 /out/alertmanager.yml || true
           '
 
+        
         # 4) Levantar/actualizar la pila de monitoreo
         docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
 
