@@ -6,38 +6,46 @@ pipeline {
     disableConcurrentBuilds()
   }
 
+  triggers { pollSCM('H/2 * * * *') }
+
   environment {
     IMAGE             = 'miapp'
     APP_PORT_INTERNAL = '8080'
     SONARQUBE_ENV     = 'SonarLocal'
     MAIL_TO           = 'msblanco@unis.edu.gt, mariasofiablanco9@gmail.com'
-
-    // Base de datos SQLite SIN sudo, dentro de JENKINS_HOME
-    SQLITE_BASE = "${env.JENKINS_HOME ?: '/var/jenkins_home'}/sqlite"
-    SQLITE_DIR  = "${SQLITE_BASE}/${env.BRANCH_NAME}"  // prod/dev/uat/master
+    // Base donde crearemos las DB por rama SIN sudo
+    SQLITE_BASE       = "${env.JENKINS_HOME ?: '/var/jenkins_home'}/sqlite"
   }
 
-  triggers { pollSCM('H/2 * * * *') }
-
   stages {
+
+    stage('Init Vars') {
+      steps {
+        script {
+          env.PORT = (env.BRANCH_NAME == 'dev') ? '3001'
+                   : (env.BRANCH_NAME == 'uat') ? '3002'
+                   : '3003' // prod/master -> 3003
+          env.SQLITE_DIR = "${env.SQLITE_BASE}/${env.BRANCH_NAME}"
+          env.CNAME = "app_${env.BRANCH_NAME}"
+          echo "Branch=${env.BRANCH_NAME}, PORT=${env.PORT}, SQLITE_DIR=${env.SQLITE_DIR}, CNAME=${env.CNAME}"
+        }
+      }
+    }
+
+    stage('Prepare DB dir') {
+      steps {
+        sh '''
+          set -e
+          mkdir -p "${SQLITE_DIR}"
+          chmod 777 "${SQLITE_DIR}"
+          echo "SQLite dir: ${SQLITE_DIR}"
+        '''
+      }
+    }
 
     stage('Checkout') {
       steps { checkout scm }
       post { failure { notify('FALLÓ', 'Checkout del repo') } }
-    }
-
-    stage('Prepare DB dir') {
-      when { anyOf { branch 'dev'; branch 'uat'; branch 'master'; branch 'prod' } }
-      steps {
-        sh '''
-          set -e
-          echo "JENKINS_HOME=${JENKINS_HOME}"
-          echo "Creando directorio SQLite: ${SQLITE_DIR}"
-          mkdir -p "${SQLITE_DIR}"
-          chmod 777 "${SQLITE_DIR}" || true
-          ls -ld "${SQLITE_DIR}"
-        '''
-      }
     }
 
     stage('Build & Tests (Maven Wrapper)') {
@@ -70,23 +78,21 @@ pipeline {
           '''
         }
       }
-      post { failure { notify('FALLÓ', 'Ejecución del análisis SonarQube') } }
+      post { failure { notify('FALLÓ', 'Análisis SonarQube') } }
     }
 
     stage('Quality Gate') {
       steps {
         timeout(time: 15, unit: 'MINUTES') {
-          // Requiere webhook en SonarQube -> http(s)://<jenkins>/sonarqube-webhook/
+          // Requiere webhook en Sonar → http(s)://<jenkins>/sonarqube-webhook/
           waitForQualityGate abortPipeline: true
         }
       }
-      post { failure { notify('FALLÓ', 'Quality Gate de SonarQube (deuda técnica/bugs o timeout)') } }
+      post { failure { notify('FALLÓ', 'Quality Gate de SonarQube') } }
     }
 
     stage('Docker Build (backend/Dockerfile.jvm)') {
       steps {
-        // MUY IMPORTANTE: el contexto es "backend", por eso el Dockerfile
-        // debe usar rutas SIN el prefijo "backend/"
         sh "docker build -f backend/Dockerfile.jvm -t ${IMAGE}:${env.BRANCH_NAME} backend"
       }
       post { failure { notify('FALLÓ', 'Docker build') } }
@@ -94,78 +100,90 @@ pipeline {
 
     stage('Deploy per branch (SQLite)') {
       steps {
-        script {
-          def port = (env.BRANCH_NAME == 'dev') ? '3001'
-                    : (env.BRANCH_NAME == 'uat') ? '3002'
-                    : '3003' // master/prod
+        sh '''
+          set -e
+          docker network create appnet || true
+          docker rm -f "${CNAME}" || true
 
-          def cname = "app_${env.BRANCH_NAME}"
+          # OJO: Montamos ${SQLITE_DIR} en /data y apuntamos la URL de SQLite ahí
+          docker run -d --name "${CNAME}" --restart=unless-stopped \
+            --network appnet \
+            -p "${PORT}:${APP_PORT_INTERNAL}" \
+            -v "${SQLITE_DIR}:/data" \
+            -e QUARKUS_DATASOURCE_JDBC_URL="jdbc:sqlite:/data/app.db" \
+            ${IMAGE}:${BRANCH_NAME}
 
-          sh '''
-            set -e
-            docker network create appnet || true
-          '''
-
-          sh "docker rm -f ${cname} || true"
-
-          // Montamos SQLITE_DIR como /data y forzamos la URL de SQLite
-          sh """
-            docker run -d --name ${cname} --restart=unless-stopped \\
-              --network appnet \\
-              -p ${port}:${APP_PORT_INTERNAL} \\
-              -v "${SQLITE_DIR}:/data" \\
-              -e QUARKUS_DATASOURCE_JDBC_URL="jdbc:sqlite:/data/app.db" \\
-              ${IMAGE}:${env.BRANCH_NAME}
-          """
-          echo "✅ Desplegado ${cname} en puerto ${port} con DB en ${SQLITE_DIR} -> /data/app.db"
-        }
+          echo "✅ Desplegado ${CNAME} en puerto ${PORT} con DB en ${SQLITE_DIR} -> /data/app.db"
+        '''
       }
       post { failure { notify('FALLÓ', 'Despliegue por rama') } }
     }
 
     stage('Start Monitoring Stack') {
-      steps {
-        sh '''
-          set -e
-          cd monitoring
-          export SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:?SLACK_WEBHOOK_URL}
-          export ALERT_EMAILS=${ALERT_EMAILS:?ALERT_EMAILS}
-          export SMTP_FROM=${SMTP_FROM:?SMTP_FROM}
-          export SMTP_HOST=${SMTP_HOST:?SMTP_HOST}
-          export SMTP_USER=${SMTP_USER:-}
-          export SMTP_PASS=${SMTP_PASS:-}
-          export SLACK_CHANNEL=${SLACK_CHANNEL:-#alerts}
-          export SMTP_PORT=${SMTP_PORT:-587}
-          bash render-config.sh
-          docker compose up -d --remove-orphans
-        '''
+      when {
+        // Corre solo si existe el folder monitoring/ con docker-compose.yml
+        expression { fileExists('monitoring/docker-compose.yml') }
       }
+      steps {
+        // Lee secreta de Slack y credenciales SMTP si las configuraste en Jenkins
+        withCredentials([
+          string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK_URL'),
+          usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
+        ]) {
+          sh '''
+            set -e
+            cd monitoring
+
+            # Variables "suaves" (con defaults para no reventar)
+            export SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:-}"
+            export ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}"
+            export SMTP_FROM="${SMTP_FROM:-alerts@example.com}"
+            export SMTP_HOST="${SMTP_HOST:-smtp.example.com}"
+            export SMTP_USER="${SMTP_USER:-}"
+            export SMTP_PASS="${SMTP_PASS:-}"
+            export SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}"
+            export SMTP_PORT="${SMTP_PORT:-587}"
+
+            # Plantillas → archivos reales
+            bash ./render-config.sh
+
+            # Usa la red externa appnet para hablar con app_* y con jenkins
+            docker compose up -d --remove-orphans
+          '''
+        }
+      }
+      post { failure { notify('FALLÓ', 'Monitoring stack') } }
     }
 
     stage('Stress test (k6 via Docker)') {
+      when { expression { fileExists('load-tests/k6/stress.js') } }
       steps {
         sh '''
           set -e
-          PORT=$( [ "${BRANCH_NAME}" = "dev" ] && echo 3001 || ( [ "${BRANCH_NAME}" = "uat" ] && echo 3002 || echo 3003 ) )
           BASE_URL="http://localhost:${PORT}"
           echo "k6 BASE_URL=${BASE_URL}"
-          docker run --rm --network host -e BASE_URL="${BASE_URL}" \
+          docker run --rm --network host \
+            -e BASE_URL="${BASE_URL}" \
             -v "$PWD/load-tests/k6:/tests" grafana/k6 run /tests/stress.js
         '''
       }
+      post { failure { notify('FALLÓ', 'Stress test k6') } }
     }
 
     stage('Stress test (JMeter via Docker)') {
+      when { expression { fileExists('load-tests/jmeter/stress_test.jmx') } }
       steps {
         sh '''
           set -e
-          PORT=$( [ "${BRANCH_NAME}" = "dev" ] && echo 3001 || ( [ "${BRANCH_NAME}" = "uat" ] && echo 3002 || echo 3003 ) )
           mkdir -p load-tests/results
-          docker run --rm --network host -v "$PWD/load-tests:/tests" justb4/jmeter:5.6.3 \
-            -n -t /tests/jmeter/stress_test.jmx -l /tests/results/stress_results_${BRANCH_NAME}.jtl \
+          docker run --rm --network host \
+            -v "$PWD/load-tests:/tests" justb4/jmeter:5.6.3 \
+            -n -t /tests/jmeter/stress_test.jmx \
+            -l /tests/results/stress_results_${BRANCH_NAME}.jtl \
             -JBASE_HOST=localhost -JBASE_PORT=${PORT}
         '''
       }
+      post { failure { notify('FALLÓ', 'Stress test JMeter') } }
     }
   }
 
@@ -176,7 +194,7 @@ pipeline {
   }
 }
 
-// ---- Helper para correo HTML (emailext) ----
+// ---- Helper de correo (simple) ----
 def notify(String estado, String motivo) {
   def asunto = "[${env.JOB_NAME}][${env.BRANCH_NAME}] #${env.BUILD_NUMBER} – ${estado}"
   def html = """
@@ -189,12 +207,11 @@ def notify(String estado, String motivo) {
     <tr><td><b>Consola</b></td><td><a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></td></tr>
     <tr><td><b>Artefactos</b></td><td><a href="${env.BUILD_URL}artifact">${env.BUILD_URL}artifact</a></td></tr>
   </table>
-  <p>Quality Gate (si aplica): revisa Sonar → <i>Project: hospital-mbp-backend</i></p>
+  <p>Quality Gate: revisar en Sonar → <i>Project: hospital-mbp-backend</i></p>
   """
   emailext(
     subject: asunto,
     to: env.MAIL_TO,
-    recipientProviders: [[$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']],
     mimeType: 'text/html',
     body: html,
     replyTo: 'msblanco@unis.edu.gt',

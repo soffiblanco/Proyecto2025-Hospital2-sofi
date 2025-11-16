@@ -9,13 +9,13 @@ receivers:
   - name: 'team-alerts'
     slack_configs:
       - send_resolved: true
-        api_url: 'https://arqsistemas.slack.com/archives/C09Q4MNCUL9'
-        channel: 'https://app.slack.com/huddle/T09Q4J8QW01/C09Q4MNCUL9'
+        api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '#monitoreo'           # o el canal que autorizaste
         title: 'ALERTA {{ .Status }}: {{ .CommonLabels.alertname }}'
         text: |
-          Detalles:
-          {{ range .Alerts }}• {{ .Annotations.summary }} ({{ .Labels.severity }})
-          {{ end }}
+          {{ range .Alerts -}}
+          • {{ .Annotations.summary }} ({{ .Labels.severity }})
+          {{ end -}}
     email_configs:
       - to: '${ALERT_EMAILS}'
         from: '${SMTP_FROM}'
