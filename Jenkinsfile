@@ -139,30 +139,18 @@ stage('Start Monitoring Stack') {
         OUT_DIR="${MON_DIR}/generated"
         COMPOSE_FILE="${MON_DIR}/docker-compose.yml"
 
-        echo "WORKSPACE = ${WORKSPACE}"
-        echo "MON_DIR   = ${MON_DIR}"
-        echo "OUT_DIR   = ${OUT_DIR}"
-        echo "COMPOSE   = ${COMPOSE_FILE}"
-
-        # Asegura docker compose (plugin CLI) dentro del contenedor de Jenkins si hiciera falta
-        if ! docker compose version >/dev/null 2>&1; then
-          echo "Instalando docker compose plugin..."
-          mkdir -p /usr/local/lib/docker/cli-plugins
-          curl -sSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
-            https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64
-          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+        mkdir -p "${OUT_DIR}"
+        # --- guard contra directorio con nombre de archivo ---
+        if [ -d "${OUT_DIR}/alertmanager.yml" ]; then
+          rm -rf "${OUT_DIR}/alertmanager.yml"
         fi
 
-        # Vars por defecto si no las pasas como envs del Job
         ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}"
         SMTP_FROM="${SMTP_FROM:-alerts@example.com}"
         SMTP_HOST="${SMTP_HOST:-smtp.example.com}"
         SMTP_PORT="${SMTP_PORT:-587}"
         SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}"
 
-        mkdir -p "${OUT_DIR}"
-
-        # === Generar alertmanager.yml directamente (sin templates) ===
         cat > "${OUT_DIR}/alertmanager.yml" <<YAML
 route:
   receiver: 'team-alerts'
@@ -193,14 +181,14 @@ receivers:
 YAML
 
         echo "--- alertmanager.yml (preview) ---"
-        head -n 40 "${OUT_DIR}/alertmanager.yml" || true
+        head -n 30 "${OUT_DIR}/alertmanager.yml" || true
 
-        # Levantar/actualizar stack de monitoreo
         docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans
       '''
     }
   }
 }
+
 
 
 
