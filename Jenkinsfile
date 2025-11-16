@@ -135,27 +135,30 @@ stage('Start Monitoring Stack') {
       sh '''
         set -e
 
-        # Usa la var de entorno de Jenkins (siempre existe)
         MON_DIR="$WORKSPACE/monitoring"
-
         echo "WORKSPACE = $WORKSPACE"
         echo "MON_DIR   = $MON_DIR"
 
-        # Sanity checks para que falle con mensaje claro si falta algo
+        # 1) Verificaciones
         if [ ! -d "$MON_DIR" ]; then
           echo "❌ No existe $MON_DIR"; ls -la "$WORKSPACE"; exit 1
         fi
-        if [ ! -f "$MON_DIR/templates/alertmanager.yml.tpl" ]; then
-          echo "❌ Falta $MON_DIR/templates/alertmanager.yml.tpl"
-          ls -la "$MON_DIR" || true
-          ls -la "$MON_DIR/templates" || true
+
+        # Busca el template en cualquier subcarpeta
+        TPL_PATH="$(find "$MON_DIR" -type f -name 'alertmanager.yml.tpl' -print -quit || true)"
+        if [ -z "$TPL_PATH" ]; then
+          echo "❌ No se encontró alertmanager.yml.tpl dentro de $MON_DIR"
+          echo "Contenido:"
+          find "$MON_DIR" -maxdepth 3 -type f | sed 's|^|  - |'
           exit 1
         fi
+        echo "Template encontrado: $TPL_PATH"
 
-        # Crear carpeta de salida dentro del workspace (no /generated)
-        mkdir -p "$MON_DIR/generated"
+        # 2) Carpeta de salida (siempre dentro del workspace, no en /)
+        OUT_DIR="$MON_DIR/generated"
+        mkdir -p "$OUT_DIR"
 
-        # Render del template -> generated/alertmanager.yml
+        # 3) Render del template (montamos SOLO la carpeta del template y la carpeta de salida)
         docker run --rm \
           -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
           -e ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}" \
@@ -165,22 +168,24 @@ stage('Start Monitoring Stack') {
           -e SMTP_PASS="$SMTP_PASS" \
           -e SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}" \
           -e SMTP_PORT="${SMTP_PORT:-587}" \
-          -v "$MON_DIR:/w" alpine:3.20 sh -c '
+          -v "$(dirname "$TPL_PATH"):/tpl:ro" \
+          -v "$OUT_DIR:/out" \
+          alpine:3.20 sh -c '
             set -e
             apk add --no-cache gettext >/dev/null
-            cd /w
-            envsubst < templates/alertmanager.yml.tpl > generated/alertmanager.yml
+            envsubst < /tpl/alertmanager.yml.tpl > /out/alertmanager.yml
             echo "--- alertmanager.yml (head) ---"
-            head -n 30 generated/alertmanager.yml || true
+            head -n 30 /out/alertmanager.yml || true
           '
 
-        # Levantar el stack de monitoreo
+        # 4) Levantar stack de monitoreo
         cd "$MON_DIR"
         docker compose -f docker-compose.monitor.yml up -d --remove-orphans
       '''
     }
   }
 }
+
 
 
 
