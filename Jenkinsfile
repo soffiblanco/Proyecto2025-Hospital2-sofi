@@ -133,7 +133,7 @@ stage('Start Monitoring Stack') {
       usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
     ]) {
       script {
-        // Defaults en Groovy
+        // Defaults en Groovy (sin interpolación)
         def slackChannel = (env.SLACK_CHANNEL?.trim()) ? env.SLACK_CHANNEL.trim() : '#alerts'
         def smtpFrom     = (env.SMTP_FROM?.trim()) ? env.SMTP_FROM.trim() : 'alerts@example.com'
         def smtpHost     = (env.SMTP_HOST?.trim()) ? env.SMTP_HOST.trim() : 'smtp.example.com'
@@ -141,48 +141,48 @@ stage('Start Monitoring Stack') {
         def alertEmails  = (env.ALERT_EMAILS?.trim()) ? env.ALERT_EMAILS.trim() : 'msblanco@unis.edu.gt,mariasofiablanco9@gmail.com'
         def MON_DIR      = "${env.WORKSPACE}/monitoring"
 
-        // (1) Asegura que exista monitoring/generated/
-        sh """
+        // 1) Asegura carpeta "generated" y valida que el template exista donde corresponde
+        sh '''
           set -e
           mkdir -p "${MON_DIR}/generated"
-        """
+          echo "Listando monitoring/templates:"
+          ls -la "${MON_DIR}/templates" || true
+          test -f "${MON_DIR}/templates/alertmanager.yml.tpl" || { echo "❌ No existe ${MON_DIR}/templates/alertmanager.yml.tpl"; exit 1; }
+        '''
 
-        // (2) Renderiza el template DESDE templates/ HACIA generated/
-        sh """
-          docker run --rm \\
-            -e SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}" \\
-            -e ALERT_EMAILS="${alertEmails}" \\
-            -e SMTP_FROM="${smtpFrom}" \\
-            -e SMTP_HOST="${smtpHost}" \\
-            -e SMTP_USER="${SMTP_USER}" \\
-            -e SMTP_PASS="${SMTP_PASS}" \\
-            -e SLACK_CHANNEL="${slackChannel}" \\
-            -e SMTP_PORT="${smtpPort}" \\
-            -v "${MON_DIR}:/w" alpine:3.20 sh -c '
+        // 2) Renderiza DESDE templates/ -> HACIA generated/ (sin interpolar secretos en Groovy)
+        sh '''
+          docker run --rm \
+            -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
+            -e ALERT_EMAILS="$ALERT_EMAILS" \
+            -e SMTP_FROM="$SMTP_FROM" \
+            -e SMTP_HOST="$SMTP_HOST" \
+            -e SMTP_USER="$SMTP_USER" \
+            -e SMTP_PASS="$SMTP_PASS" \
+            -e SLACK_CHANNEL="$SLACK_CHANNEL" \
+            -e SMTP_PORT="$SMTP_PORT" \
+            -v "${MON_DIR}:/w" alpine:3.20 sh -lc '
               set -e
               apk add --no-cache gettext >/dev/null
               cd /w
-              # eliminar cualquier archivo previo y garantizar que la carpeta exista
-              rm -f generated/alertmanager.yml
               mkdir -p generated
-              # OJO: el template ahora está en templates/
               envsubst < templates/alertmanager.yml.tpl > generated/alertmanager.yml
               echo "--- alertmanager.yml (primeras líneas) ---"
               head -n 30 generated/alertmanager.yml || true
             '
-        """
+        '''
 
-        // (3) Levanta el stack usando tu compose con los volumes que apuntan a ./generated/alertmanager.yml
-        sh """
+        // 3) Levanta el stack con el compose que monta ./generated/alertmanager.yml
+        sh '''
           set -e
           cd "${MON_DIR}"
-          # si tu archivo se llama docker-compose.monitor.yml úsalo explícitamente:
           docker compose -f docker-compose.monitor.yml up -d --remove-orphans
-        """
+        '''
       }
     }
   }
 }
+
 
 
 
