@@ -119,41 +119,42 @@ pipeline {
       post { failure { notify('FALLÓ', 'Despliegue por rama') } }
     }
 
-    stage('Start Monitoring Stack') {
-      when {
-        // Corre solo si existe el folder monitoring/ con docker-compose.yml
-        expression { fileExists('monitoring/docker-compose.yml') }
-      }
-      steps {
-        // Lee secreta de Slack y credenciales SMTP si las configuraste en Jenkins
-        withCredentials([
-          string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK_URL'),
-          usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
-        ]) {
-          sh '''
+stage('Start Monitoring Stack') {
+  steps {
+    script {
+      // Carpeta absoluta del repo en el workspace
+      def MON_DIR = "${env.WORKSPACE}/monitoring"
+
+      sh """
+        set -e
+        # Ejecuta envsubst dentro de alpine y genera los archivos reales desde .tpl
+        docker run --rm \
+          -e SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}" \
+          -e ALERT_EMAILS="${ALERT_EMAILS}" \
+          -e SMTP_FROM="${SMTP_FROM}" \
+          -e SMTP_HOST="${SMTP_HOST}" \
+          -e SMTP_USER="${SMTP_USER}" \
+          -e SMTP_PASS="${SMTP_PASS}" \
+          -e SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}" \
+          -e SMTP_PORT="${SMTP_PORT:-587}" \
+          -v "${MON_DIR}:/w" alpine:3.20 sh -c '
             set -e
-            cd monitoring
+            apk add --no-cache gettext && cd /w
+            # Renderiza templates
+            envsubst < alertmanager.yml.tpl > alertmanager.yml
+            # Si tienes más .tpl, agrégalos igual
+            # envsubst < prometheus.yml.tpl > prometheus.yml
+            # envsubst < datasources.yml.tpl > datasources.yml
+          '
 
-            # Variables "suaves" (con defaults para no reventar)
-            export SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL:-}"
-            export ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}"
-            export SMTP_FROM="${SMTP_FROM:-alerts@example.com}"
-            export SMTP_HOST="${SMTP_HOST:-smtp.example.com}"
-            export SMTP_USER="${SMTP_USER:-}"
-            export SMTP_PASS="${SMTP_PASS:-}"
-            export SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}"
-            export SMTP_PORT="${SMTP_PORT:-587}"
-
-            # Plantillas → archivos reales
-            bash ./render-config.sh
-
-            # Usa la red externa appnet para hablar con app_* y con jenkins
-            docker compose up -d --remove-orphans
-          '''
-        }
-      }
-      post { failure { notify('FALLÓ', 'Monitoring stack') } }
+        # Levanta el stack
+        cd "${MON_DIR}"
+        docker compose up -d --remove-orphans
+      """
     }
+  }
+}
+
 
     stage('Stress test (k6 via Docker)') {
       when { expression { fileExists('load-tests/k6/stress.js') } }
