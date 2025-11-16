@@ -141,11 +141,14 @@ stage('Start Monitoring Stack') {
         def alertEmails  = (env.ALERT_EMAILS?.trim()) ? env.ALERT_EMAILS.trim() : 'msblanco@unis.edu.gt,mariasofiablanco9@gmail.com'
         def MON_DIR      = "${env.WORKSPACE}/monitoring"
 
+        // (1) Asegura que exista monitoring/generated/
         sh """
           set -e
           mkdir -p "${MON_DIR}/generated"
+        """
 
-          # Render con Alpine + envsubst a *generated/alertmanager.yml*
+        // (2) Renderiza el template DESDE templates/ HACIA generated/
+        sh """
           docker run --rm \\
             -e SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}" \\
             -e ALERT_EMAILS="${alertEmails}" \\
@@ -157,24 +160,30 @@ stage('Start Monitoring Stack') {
             -e SMTP_PORT="${smtpPort}" \\
             -v "${MON_DIR}:/w" alpine:3.20 sh -c '
               set -e
-              apk add --no-cache gettext
+              apk add --no-cache gettext >/dev/null
               cd /w
-              # Asegura que NO exista un directorio con el mismo nombre
-              [ -d generated/alertmanager.yml ] && rm -rf generated/alertmanager.yml
-              envsubst < alertmanager.yml.tpl > generated/alertmanager.yml
-              echo "--- alertmanager.yml ---"
+              # eliminar cualquier archivo previo y garantizar que la carpeta exista
+              rm -f generated/alertmanager.yml
+              mkdir -p generated
+              # OJO: el template ahora está en templates/
+              envsubst < templates/alertmanager.yml.tpl > generated/alertmanager.yml
+              echo "--- alertmanager.yml (primeras líneas) ---"
               head -n 30 generated/alertmanager.yml || true
             '
+        """
 
+        // (3) Levanta el stack usando tu compose con los volumes que apuntan a ./generated/alertmanager.yml
+        sh """
+          set -e
           cd "${MON_DIR}"
-          docker network create mon || true
-          docker network create appnet || true
+          # si tu archivo se llama docker-compose.monitor.yml úsalo explícitamente:
           docker compose -f docker-compose.monitor.yml up -d --remove-orphans
         """
       }
     }
   }
 }
+
 
 
 
