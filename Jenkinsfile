@@ -136,58 +136,72 @@ stage('Start Monitoring Stack') {
         set -Eeuo pipefail
 
         MON_DIR="${WORKSPACE}/monitoring"
-        TPL_DIR="${MON_DIR}/templates"
         OUT_DIR="${MON_DIR}/generated"
         COMPOSE_FILE="${MON_DIR}/docker-compose.yml"
 
         echo "WORKSPACE = ${WORKSPACE}"
         echo "MON_DIR   = ${MON_DIR}"
-        echo "TPL_DIR   = ${TPL_DIR}"
         echo "OUT_DIR   = ${OUT_DIR}"
         echo "COMPOSE   = ${COMPOSE_FILE}"
 
-        # 1) Sanity check: existen los archivos?
-        [ -d "${MON_DIR}" ]
-        [ -f "${TPL_DIR}/alertmanager.yml.tpl" ]
-        [ -f "${COMPOSE_FILE}" ]
-
-        # 2) Asegura envsubst en el contenedor de Jenkins
-        if ! command -v envsubst >/dev/null 2>&1; then
-          echo "Instalando gettext-base (envsubst)..."
-          apt-get update -y >/dev/null
-          apt-get install -y gettext-base >/dev/null
+        # Asegura docker compose (plugin CLI) dentro del contenedor de Jenkins si hiciera falta
+        if ! docker compose version >/dev/null 2>&1; then
+          echo "Instalando docker compose plugin..."
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          curl -sSL -o /usr/local/lib/docker/cli-plugins/docker-compose \
+            https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
         fi
 
-        # 3) Carpeta de salida
+        # Vars por defecto si no las pasas como envs del Job
+        ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}"
+        SMTP_FROM="${SMTP_FROM:-alerts@example.com}"
+        SMTP_HOST="${SMTP_HOST:-smtp.example.com}"
+        SMTP_PORT="${SMTP_PORT:-587}"
+        SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}"
+
         mkdir -p "${OUT_DIR}"
-        chmod 777 "${OUT_DIR}"
 
-        # 4) Variables para los templates
-        export SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}"
-        export ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}"
-        export SMTP_FROM="${SMTP_FROM:-alerts@example.com}"
-        export SMTP_HOST="${SMTP_HOST:-smtp.example.com}"
-        export SMTP_USER="${SMTP_USER}"
-        export SMTP_PASS="${SMTP_PASS}"
-        export SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}"
-        export SMTP_PORT="${SMTP_PORT:-587}"
+        # === Generar alertmanager.yml directamente (sin templates) ===
+        cat > "${OUT_DIR}/alertmanager.yml" <<YAML
+route:
+  receiver: 'team-alerts'
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 2m
+  repeat_interval: 2h
 
-        # 5) Render de templates directamente en el workspace
-        envsubst < "${TPL_DIR}/alertmanager.yml.tpl" > "${OUT_DIR}/alertmanager.yml"
-        if [ -f "${TPL_DIR}/grafana-contact-points.yaml.tpl" ]; then
-          envsubst < "${TPL_DIR}/grafana-contact-points.yaml.tpl" \
-            > "${MON_DIR}/grafana/provisioning/alerting/contact-points.yaml"
-        fi
+receivers:
+  - name: 'team-alerts'
+    slack_configs:
+      - send_resolved: true
+        api_url: '${SLACK_WEBHOOK_URL}'
+        channel: '${SLACK_CHANNEL}'
+        title: 'ALERTA {{ .Status }}: {{ .CommonLabels.alertname }}'
+        text: |
+          Detalles:
+          {{ range .Alerts }}• {{ .Annotations.summary }} ({{ .Labels.severity }})
+          {{ end }}
+    email_configs:
+      - to: '${ALERT_EMAILS}'
+        from: '${SMTP_FROM}'
+        smarthost: '${SMTP_HOST}:${SMTP_PORT}'
+        auth_username: '${SMTP_USER}'
+        auth_identity: '${SMTP_USER}'
+        auth_password: '${SMTP_PASS}'
+        require_tls: true
+YAML
 
         echo "--- alertmanager.yml (preview) ---"
         head -n 40 "${OUT_DIR}/alertmanager.yml" || true
 
-        # 6) Levantar/actualizar el stack de monitoreo
+        # Levantar/actualizar stack de monitoreo
         docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans
       '''
     }
   }
 }
+
 
 
 
