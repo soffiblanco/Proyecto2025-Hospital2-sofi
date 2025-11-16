@@ -10,12 +10,12 @@ receivers:
     slack_configs:
       - send_resolved: true
         api_url: '${SLACK_WEBHOOK_URL}'
-        channel: '#monitoreo'           # o el canal que autorizaste
+        channel: '${SLACK_CHANNEL}'
         title: 'ALERTA {{ .Status }}: {{ .CommonLabels.alertname }}'
         text: |
-          {{ range .Alerts -}}
-          • {{ .Annotations.summary }} ({{ .Labels.severity }})
-          {{ end -}}
+          Detalles:
+          {{ range .Alerts }}• {{ .Annotations.summary }} ({{ .Labels.severity }})
+          {{ end }}
     email_configs:
       - to: '${ALERT_EMAILS}'
         from: '${SMTP_FROM}'

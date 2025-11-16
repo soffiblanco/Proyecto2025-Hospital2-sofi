@@ -121,39 +121,50 @@ pipeline {
 
 stage('Start Monitoring Stack') {
   steps {
-    script {
-      // Carpeta absoluta del repo en el workspace
-      def MON_DIR = "${env.WORKSPACE}/monitoring"
+    withCredentials([
+      string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK_URL'),
+      usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
+    ]) {
+      script {
+        // Defaults en Groovy (sin líos con # ni ${...})
+        def slackChannel = (env.SLACK_CHANNEL?.trim()) ? env.SLACK_CHANNEL.trim() : '#alerts'
+        def smtpFrom     = (env.SMTP_FROM?.trim()) ? env.SMTP_FROM.trim() : 'alerts@example.com'
+        def smtpHost     = (env.SMTP_HOST?.trim()) ? env.SMTP_HOST.trim() : 'smtp.example.com'
+        def smtpPort     = (env.SMTP_PORT?.trim()) ? env.SMTP_PORT.trim() : '587'
+        def alertEmails  = (env.ALERT_EMAILS?.trim()) ? env.ALERT_EMAILS.trim() : 'msblanco@unis.edu.gt,mariasofiablanco9@gmail.com'
+        def MON_DIR      = "${env.WORKSPACE}/monitoring"
 
-      sh """
-        set -e
-        # Ejecuta envsubst dentro de alpine y genera los archivos reales desde .tpl
-        docker run --rm \
-          -e SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}" \
-          -e ALERT_EMAILS="${ALERT_EMAILS}" \
-          -e SMTP_FROM="${SMTP_FROM}" \
-          -e SMTP_HOST="${SMTP_HOST}" \
-          -e SMTP_USER="${SMTP_USER}" \
-          -e SMTP_PASS="${SMTP_PASS}" \
-          -e SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}" \
-          -e SMTP_PORT="${SMTP_PORT:-587}" \
-          -v "${MON_DIR}:/w" alpine:3.20 sh -c '
-            set -e
-            apk add --no-cache gettext && cd /w
-            # Renderiza templates
-            envsubst < alertmanager.yml.tpl > alertmanager.yml
-            # Si tienes más .tpl, agrégalos igual
-            # envsubst < prometheus.yml.tpl > prometheus.yml
-            # envsubst < datasources.yml.tpl > datasources.yml
-          '
+        sh """
+          set -e
+          # 1) Renderizar templates con envsubst dentro de Alpine (trae gettext)
+          docker run --rm \\
+            -e SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}" \\
+            -e ALERT_EMAILS="${alertEmails}" \\
+            -e SMTP_FROM="${smtpFrom}" \\
+            -e SMTP_HOST="${smtpHost}" \\
+            -e SMTP_USER="${SMTP_USER}" \\
+            -e SMTP_PASS="${SMTP_PASS}" \\
+            -e SLACK_CHANNEL="${slackChannel}" \\
+            -e SMTP_PORT="${smtpPort}" \\
+            -v "${MON_DIR}:/w" alpine:3.20 sh -c '
+              set -e
+              apk add --no-cache gettext
+              cd /w
+              # Renderiza alertmanager.yml desde el .tpl
+              envsubst < alertmanager.yml.tpl > alertmanager.yml
+              # Si tienes más .tpl, repite aquí:
+              # envsubst < prometheus.yml.tpl > prometheus.yml
+            '
 
-        # Levanta el stack
-        cd "${MON_DIR}"
-        docker compose up -d --remove-orphans
-      """
+          # 2) Levantar el stack
+          cd "${MON_DIR}"
+          docker compose up -d --remove-orphans
+        """
+      }
     }
   }
 }
+
 
 
     stage('Stress test (k6 via Docker)') {
