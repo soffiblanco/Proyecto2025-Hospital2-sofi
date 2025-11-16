@@ -82,19 +82,19 @@ services:
       - mon
       - appnet
 
-blackbox:
-  image: prom/blackbox-exporter:v0.25.0
-  container_name: blackbox
-  volumes:
-    # Monta la carpeta completa con la config dentro
-    - ./blackbox:/etc/blackbox_exporter:ro
-  command:
-    - --config.file=/etc/blackbox_exporter/blackbox.yml
-  ports:
-    - "9115:9115"
-  networks:
-    - mon
-    - appnet
+  blackbox:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox
+    volumes:
+      # Monta la carpeta completa con la config dentro
+      - ./blackbox:/etc/blackbox_exporter:ro
+    command:
+      - --config.file=/etc/blackbox_exporter/blackbox.yml
+    ports:
+      - "9115:9115"
+    networks:
+      - mon
+      - appnet
 
 
 networks:
