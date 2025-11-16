@@ -7,13 +7,10 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=15d
     volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ./prometheus:/etc/prometheus:ro     # <— monta la carpeta completa
     ports:
       - "9090:9090"
-    networks:
-      - mon
-      - appnet
+    networks: [mon, appnet]
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
