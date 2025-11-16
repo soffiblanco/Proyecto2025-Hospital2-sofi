@@ -127,90 +127,73 @@ pipeline {
     }
 
 stage('Start Monitoring Stack') {
+  when { expression { fileExists('monitoring/docker-compose.yml') } }
   steps {
     withCredentials([
       string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK_URL'),
       usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
     ]) {
-      sh '''
-        set -Eeuo pipefail
+      script {
+        // Rutas en el workspace de Jenkins
+        def MON_DIR = "${env.WORKSPACE}/monitoring"
+        def TPL_DIR = "${MON_DIR}/templates"
+        def OUT_DIR = "${MON_DIR}/generated"
 
-        MON_DIR="$WORKSPACE/monitoring"
-        TPL_DIR="$MON_DIR/templates"
-        TPL_FILE="$TPL_DIR/alertmanager.yml.tpl"
-        OUT_DIR="$MON_DIR/generated"
-        COMPOSE_FILE="$MON_DIR/docker-compose.yml"
+        // Valores por defecto seguros (evitamos el error del '#')
+        def slackChannel = (env.SLACK_CHANNEL?.trim()) ?: '#monitoreo'
+        def alertEmails  = (env.ALERT_EMAILS?.trim()) ?: 'msblanco@unis.edu.gt,mariasofiablanco9@gmail.com'
+        def smtpFrom     = (env.SMTP_FROM?.trim()) ?: 'alerts@example.com'
+        def smtpHost     = (env.SMTP_HOST?.trim()) ?: 'smtp.example.com'
+        def smtpPort     = (env.SMTP_PORT?.trim()) ?: '587'
 
-        echo "WORKSPACE = $WORKSPACE"
-        echo "MON_DIR   = $MON_DIR"
-        echo "TPL_FILE  = $TPL_FILE"
-        echo "OUT_DIR   = $OUT_DIR"
-        echo "COMPOSE   = $COMPOSE_FILE"
+        sh """
+          set -Eeuo pipefail
+          echo "MON_DIR  = ${MON_DIR}"
+          echo "TPL_DIR  = ${TPL_DIR}"
+          echo "OUT_DIR  = ${OUT_DIR}"
 
-        # 1) Validaciones de estructura
-        [ -d "$MON_DIR" ] || { echo "❌ No existe $MON_DIR"; exit 1; }
-        [ -f "$TPL_FILE" ] || { echo "❌ No existe template: $TPL_FILE"; ls -la "$TPL_DIR"; exit 1; }
-        [ -f "$COMPOSE_FILE" ] || { echo "❌ No existe compose: $COMPOSE_FILE"; exit 1; }
+          # 1) Validaciones de rutas/archivos
+          test -d "${MON_DIR}"
+          test -f "${TPL_DIR}/alertmanager.yml.tpl"
+          test -f "${TPL_DIR}/grafana-contact-points.yaml.tpl"
 
-        # 2) Directorio de salida
-        mkdir -p "$OUT_DIR"
-        chmod 777 "$OUT_DIR"
+          # 2) Carpeta de salida (en el workspace de Jenkins)
+          mkdir -p "${OUT_DIR}"
+          chmod 777 "${OUT_DIR}"
 
-        # 3) Render del template con envsubst dentro de Alpine
-docker run --rm \
-  -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
-  -e ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}" \
-  -e SMTP_FROM="${SMTP_FROM:-alerts@example.com}" \
-  -e SMTP_HOST="${SMTP_HOST:-smtp.example.com}" \
-  -e SMTP_USER="$SMTP_USER" \
-  -e SMTP_PASS="$SMTP_PASS" \
-  -e SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}" \
-  -e SMTP_PORT="${SMTP_PORT:-587}" \
-  -v "$MON_DIR:/w" \
-  alpine:3.20 sh -lc '
-    set -Eeuo pipefail
-    apk add --no-cache gettext >/dev/null
+          # 3) Render de templates con envsubst dentro de Alpine
+          docker run --rm \\
+            -e SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}" \\
+            -e SLACK_CHANNEL="${slackChannel}" \\
+            -e ALERT_EMAILS="${alertEmails}" \\
+            -e SMTP_FROM="${smtpFrom}" \\
+            -e SMTP_HOST="${smtpHost}" \\
+            -e SMTP_PORT="${smtpPort}" \\
+            -e SMTP_USER="${SMTP_USER}" \\
+            -e SMTP_PASS="${SMTP_PASS}" \\
+            -v "${TPL_DIR}:/tpl:ro" \\
+            -v "${OUT_DIR}:/out" \\
+            alpine:3.20 sh -lc '
+              set -e
+              apk add --no-cache gettext >/dev/null
+              envsubst < /tpl/alertmanager.yml.tpl > /out/alertmanager.yml
+              envsubst < /tpl/grafana-contact-points.yaml.tpl > /out/grafana-contact-points.yaml
+              echo "--- /out/alertmanager.yml ---"; head -n 20 /out/alertmanager.yml || true
+              echo "--- /out/grafana-contact-points.yaml ---"; head -n 20 /out/grafana-contact-points.yaml || true
+            '
 
-    echo "Contenido en /w:"
-    ls -la /w
-    echo "Contenido en /w/templates:"
-    ls -la /w/templates || true
+          # 4) Levantar/actualizar la pila de monitoreo
+          cd "${MON_DIR}"
+          docker compose -f docker-compose.yml up -d --remove-orphans
 
-    # Render
-    envsubst < /w/templates/alertmanager.yml.tpl > /w/generated/alertmanager.yml
-    chmod 644 /w/generated/alertmanager.yml
-    echo "--- alertmanager.yml (preview) ---"
-    head -n 30 /w/generated/alertmanager.yml || true
-  '
-
-          -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
-          -e ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}" \
-          -e SMTP_FROM="${SMTP_FROM:-alerts@example.com}" \
-          -e SMTP_HOST="${SMTP_HOST:-smtp.example.com}" \
-          -e SMTP_USER="$SMTP_USER" \
-          -e SMTP_PASS="$SMTP_PASS" \
-          -e SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}" \
-          -e SMTP_PORT="${SMTP_PORT:-587}" \
-          -v "$TPL_DIR:/tpl:ro" \
-          -v "$OUT_DIR:/out" \
-          alpine:3.20 sh -lc '
-            set -e
-            apk add --no-cache gettext >/dev/null
-            envsubst < /tpl/alertmanager.yml.tpl > /out/alertmanager.yml
-            chmod 644 /out/alertmanager.yml
-            echo "--- alertmanager.yml (preview) ---"
-            head -n 30 /out/alertmanager.yml || true
-          '
-
-        
-        # 4) Levantar/actualizar la pila de monitoreo
-        docker compose -f "$COMPOSE_FILE" up -d --remove-orphans
-
-        echo "✅ Monitoring stack actualizado."
-      '''
+          # 5) Estado
+          docker compose ps
+        """
+      }
     }
   }
 }
+
 
 
 
