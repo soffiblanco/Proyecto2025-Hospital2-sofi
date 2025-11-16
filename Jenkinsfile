@@ -133,7 +133,7 @@ stage('Start Monitoring Stack') {
       usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
     ]) {
       script {
-        // Defaults (sin # dentro de strings Groovy)
+        // Defaults en Groovy
         def slackChannel = (env.SLACK_CHANNEL?.trim()) ? env.SLACK_CHANNEL.trim() : '#alerts'
         def smtpFrom     = (env.SMTP_FROM?.trim()) ? env.SMTP_FROM.trim() : 'alerts@example.com'
         def smtpHost     = (env.SMTP_HOST?.trim()) ? env.SMTP_HOST.trim() : 'smtp.example.com'
@@ -141,63 +141,41 @@ stage('Start Monitoring Stack') {
         def alertEmails  = (env.ALERT_EMAILS?.trim()) ? env.ALERT_EMAILS.trim() : 'msblanco@unis.edu.gt,mariasofiablanco9@gmail.com'
         def MON_DIR      = "${env.WORKSPACE}/monitoring"
 
-        // Exportamos variables al entorno del shell y usamos strings con comillas simples (no hay interpolación de Groovy)
-        withEnv([
-          "SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}",
-          "SMTP_USER=${SMTP_USER}",
-          "SMTP_PASS=${SMTP_PASS}",
-          "SLACK_CHANNEL=${slackChannel}",
-          "SMTP_FROM=${smtpFrom}",
-          "SMTP_HOST=${smtpHost}",
-          "SMTP_PORT=${smtpPort}",
-          "ALERT_EMAILS=${alertEmails}",
-          "MON_DIR=${MON_DIR}"
-        ]) {
-          sh '''
-            set -e
+        sh """
+          set -e
+          mkdir -p "${MON_DIR}/generated"
 
-            # Renderizar templates con envsubst (sin exponer secretos en Groovy)
-            docker run --rm \
-              -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
-              -e ALERT_EMAILS="$ALERT_EMAILS" \
-              -e SMTP_FROM="$SMTP_FROM" \
-              -e SMTP_HOST="$SMTP_HOST" \
-              -e SMTP_USER="$SMTP_USER" \
-              -e SMTP_PASS="$SMTP_PASS" \
-              -e SLACK_CHANNEL="$SLACK_CHANNEL" \
-              -e SMTP_PORT="$SMTP_PORT" \
-              -v "$MON_DIR:/w" alpine:3.20 sh -c '
-                set -e
-                apk add --no-cache gettext
-                cd /w
-                if [ -f alertmanager.yml.tpl ]; then
-                  envsubst < alertmanager.yml.tpl > alertmanager.yml
-                fi
-                # Agrega otros templates si los tienes:
-                # envsubst < prometheus.yml.tpl > prometheus.yml
-              '
+          # Render con Alpine + envsubst a *generated/alertmanager.yml*
+          docker run --rm \\
+            -e SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}" \\
+            -e ALERT_EMAILS="${alertEmails}" \\
+            -e SMTP_FROM="${smtpFrom}" \\
+            -e SMTP_HOST="${smtpHost}" \\
+            -e SMTP_USER="${SMTP_USER}" \\
+            -e SMTP_PASS="${SMTP_PASS}" \\
+            -e SLACK_CHANNEL="${slackChannel}" \\
+            -e SMTP_PORT="${smtpPort}" \\
+            -v "${MON_DIR}:/w" alpine:3.20 sh -c '
+              set -e
+              apk add --no-cache gettext
+              cd /w
+              # Asegura que NO exista un directorio con el mismo nombre
+              [ -d generated/alertmanager.yml ] && rm -rf generated/alertmanager.yml
+              envsubst < alertmanager.yml.tpl > generated/alertmanager.yml
+              echo "--- alertmanager.yml ---"
+              head -n 30 generated/alertmanager.yml || true
+            '
 
-            # Fallback de Docker Compose: plugin ("docker compose") o binario clásico ("docker-compose")
-            if docker compose version >/dev/null 2>&1; then
-              DC="docker compose"
-            elif command -v docker-compose >/dev/null 2>&1; then
-              DC="docker-compose"
-            else
-              echo "ERROR: Docker Compose no está instalado (ni plugin ni binario)."
-              echo "Soluciones:"
-              echo "  - Instala el plugin: apt-get update && apt-get install -y docker-compose-plugin"
-              echo "  - O instala el binario: apt-get install -y docker-compose"
-              exit 1
-            fi
-
-            cd "$MON_DIR"
-            $DC up -d --remove-orphans
-          '''
-        }
+          cd "${MON_DIR}"
+          docker network create mon || true
+          docker network create appnet || true
+          docker compose -f docker-compose.monitor.yml up -d --remove-orphans
+        """
       }
     }
   }
 }
+
 
 
     stage('Stress test (k6 via Docker)') {
