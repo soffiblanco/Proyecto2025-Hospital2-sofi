@@ -170,7 +170,7 @@ stage('Start Monitoring Stack') {
           alpine:3.20 sh -lc '
             set -e
             apk add --no-cache gettext >/dev/null
-            envsubst < /tpl/alertmanager.yml.tpl > /out/alertmanager.yml
+            envsubst < /alertmanager.yml.tpl > /out/alertmanager.yml
             chmod 644 /out/alertmanager.yml
             echo "--- alertmanager.yml (preview) ---"
             head -n 30 /out/alertmanager.yml || true
