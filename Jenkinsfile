@@ -13,8 +13,6 @@ pipeline {
     APP_PORT_INTERNAL = '8080'
     SONARQUBE_ENV     = 'SonarLocal'
     MAIL_TO           = 'msblanco@unis.edu.gt, mariasofiablanco9@gmail.com'
-    // Base donde crearemos las DB por rama SIN sudo
-    SQLITE_BASE       = "${env.JENKINS_HOME ?: '/var/jenkins_home'}/sqlite"
   }
 
   stages {
@@ -22,12 +20,21 @@ pipeline {
     stage('Init Vars') {
       steps {
         script {
+          // Base segura sin sudo (dentro de JENKINS_HOME)
+          def base = env.JENKINS_HOME ?: '/var/jenkins_home'
+          env.SQLITE_BASE = "${base}/sqlite"
+
+          // Vars por rama
           env.PORT = (env.BRANCH_NAME == 'dev') ? '3001'
                    : (env.BRANCH_NAME == 'uat') ? '3002'
                    : '3003' // prod/master -> 3003
+
           env.SQLITE_DIR = "${env.SQLITE_BASE}/${env.BRANCH_NAME}"
           env.CNAME = "app_${env.BRANCH_NAME}"
-          echo "Branch=${env.BRANCH_NAME}, PORT=${env.PORT}, SQLITE_DIR=${env.SQLITE_DIR}, CNAME=${env.CNAME}"
+
+          echo "Branch=${env.BRANCH_NAME}, PORT=${env.PORT}"
+          echo "SQLite base=${env.SQLITE_BASE}, dir por rama=${env.SQLITE_DIR}"
+          echo "Container name=${env.CNAME}"
         }
       }
     }
@@ -105,7 +112,7 @@ pipeline {
           docker network create appnet || true
           docker rm -f "${CNAME}" || true
 
-          # OJO: Montamos ${SQLITE_DIR} en /data y apuntamos la URL de SQLite ahí
+          # Montamos ${SQLITE_DIR} en /data y apuntamos la URL de SQLite ahí
           docker run -d --name "${CNAME}" --restart=unless-stopped \
             --network appnet \
             -p "${PORT}:${APP_PORT_INTERNAL}" \
@@ -119,51 +126,53 @@ pipeline {
       post { failure { notify('FALLÓ', 'Despliegue por rama') } }
     }
 
-stage('Start Monitoring Stack') {
-  steps {
-    withCredentials([
-      string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK_URL'),
-      usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
-    ]) {
-      script {
-        // Defaults en Groovy (sin ${...} del shell)
-        def slackChannel = (env.SLACK_CHANNEL?.trim()) ? env.SLACK_CHANNEL.trim() : '#alerts'
-        def smtpFrom     = (env.SMTP_FROM?.trim()) ? env.SMTP_FROM.trim() : 'alerts@example.com'
-        def smtpHost     = (env.SMTP_HOST?.trim()) ? env.SMTP_HOST.trim() : 'smtp.example.com'
-        def smtpPort     = (env.SMTP_PORT?.trim()) ? env.SMTP_PORT.trim() : '587'
-        def alertEmails  = (env.ALERT_EMAILS?.trim()) ? env.ALERT_EMAILS.trim() : 'msblanco@unis.edu.gt,mariasofiablanco9@gmail.com'
-        def MON_DIR      = "${env.WORKSPACE}/monitoring"
+    stage('Start Monitoring Stack') {
+      when { expression { fileExists('monitoring') } }
+      steps {
+        withCredentials([
+          string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK_URL'),
+          usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
+        ]) {
+          script {
+            // Defaults en Groovy (evita ${...:-...} de bash que rompe por '#')
+            def slackChannel = (env.SLACK_CHANNEL?.trim()) ? env.SLACK_CHANNEL.trim() : '#alerts'
+            def smtpFrom     = (env.SMTP_FROM?.trim())     ? env.SMTP_FROM.trim()     : 'alerts@example.com'
+            def smtpHost     = (env.SMTP_HOST?.trim())     ? env.SMTP_HOST.trim()     : 'smtp.example.com'
+            def smtpPort     = (env.SMTP_PORT?.trim())     ? env.SMTP_PORT.trim()     : '587'
+            def alertEmails  = (env.ALERT_EMAILS?.trim())  ? env.ALERT_EMAILS.trim()  : 'msblanco@unis.edu.gt,mariasofiablanco9@gmail.com'
+            def MON_DIR      = "${env.WORKSPACE}/monitoring"
 
-        sh """
-          set -e
-          # Renderizar templates con envsubst dentro de Alpine (trae gettext)
-          docker run --rm \\
-            -e SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}" \\
-            -e ALERT_EMAILS="${alertEmails}" \\
-            -e SMTP_FROM="${smtpFrom}" \\
-            -e SMTP_HOST="${smtpHost}" \\
-            -e SMTP_USER="${SMTP_USER}" \\
-            -e SMTP_PASS="${SMTP_PASS}" \\
-            -e SLACK_CHANNEL="${slackChannel}" \\
-            -e SMTP_PORT="${smtpPort}" \\
-            -v "${MON_DIR}:/w" alpine:3.20 sh -c '
+            sh """
               set -e
-              apk add --no-cache gettext
-              cd /w
-              envsubst < alertmanager.yml.tpl > alertmanager.yml
-              # Si tienes más .tpl, repite:
-              # envsubst < prometheus.yml.tpl > prometheus.yml
-            '
+              # Renderizar templates con envsubst dentro de Alpine
+              docker run --rm \
+                -e SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}" \
+                -e ALERT_EMAILS="${alertEmails}" \
+                -e SMTP_FROM="${smtpFrom}" \
+                -e SMTP_HOST="${smtpHost}" \
+                -e SMTP_USER="${SMTP_USER}" \
+                -e SMTP_PASS="${SMTP_PASS}" \
+                -e SLACK_CHANNEL="${slackChannel}" \
+                -e SMTP_PORT="${smtpPort}" \
+                -v "${MON_DIR}:/w" alpine:3.20 sh -c '
+                  set -e
+                  apk add --no-cache gettext
+                  cd /w
+                  if [ -f alertmanager.yml.tpl ]; then
+                    envsubst < alertmanager.yml.tpl > alertmanager.yml
+                  fi
+                  # Agrega otros templates si los tienes:
+                  # envsubst < prometheus.yml.tpl > prometheus.yml
+                '
 
-          cd "${MON_DIR}"
-          docker compose up -d --remove-orphans
-        """
+              cd "${MON_DIR}"
+              docker compose up -d --remove-orphans
+            """
+          }
+        }
       }
+      post { failure { notify('FALLÓ', 'Start Monitoring Stack') } }
     }
-  }
-}
-
-
 
     stage('Stress test (k6 via Docker)') {
       when { expression { fileExists('load-tests/k6/stress.js') } }
@@ -204,7 +213,7 @@ stage('Start Monitoring Stack') {
   }
 }
 
-// ---- Helper de correo (simple) ----
+// ---- Helper de correo (emailext simple) ----
 def notify(String estado, String motivo) {
   def asunto = "[${env.JOB_NAME}][${env.BRANCH_NAME}] #${env.BUILD_NUMBER} – ${estado}"
   def html = """
