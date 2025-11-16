@@ -132,56 +132,56 @@ stage('Start Monitoring Stack') {
       string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK_URL'),
       usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
     ]) {
-      script {
-        // Defaults en Groovy (sin interpolación)
-        def slackChannel = (env.SLACK_CHANNEL?.trim()) ? env.SLACK_CHANNEL.trim() : '#alerts'
-        def smtpFrom     = (env.SMTP_FROM?.trim()) ? env.SMTP_FROM.trim() : 'alerts@example.com'
-        def smtpHost     = (env.SMTP_HOST?.trim()) ? env.SMTP_HOST.trim() : 'smtp.example.com'
-        def smtpPort     = (env.SMTP_PORT?.trim()) ? env.SMTP_PORT.trim() : '587'
-        def alertEmails  = (env.ALERT_EMAILS?.trim()) ? env.ALERT_EMAILS.trim() : 'msblanco@unis.edu.gt,mariasofiablanco9@gmail.com'
-        def MON_DIR      = "${env.WORKSPACE}/monitoring"
+      sh '''
+        set -e
 
-        // 1) Asegura carpeta "generated" y valida que el template exista donde corresponde
-        sh '''
-          set -e
-          mkdir -p "${MON_DIR}/generated"
-          echo "Listando monitoring/templates:"
-          ls -la "${MON_DIR}/templates" || true
-          test -f "${MON_DIR}/templates/alertmanager.yml.tpl" || { echo "❌ No existe ${MON_DIR}/templates/alertmanager.yml.tpl"; exit 1; }
-        '''
+        # Usa la var de entorno de Jenkins (siempre existe)
+        MON_DIR="$WORKSPACE/monitoring"
 
-        // 2) Renderiza DESDE templates/ -> HACIA generated/ (sin interpolar secretos en Groovy)
-        sh '''
-          docker run --rm \
-            -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
-            -e ALERT_EMAILS="$ALERT_EMAILS" \
-            -e SMTP_FROM="$SMTP_FROM" \
-            -e SMTP_HOST="$SMTP_HOST" \
-            -e SMTP_USER="$SMTP_USER" \
-            -e SMTP_PASS="$SMTP_PASS" \
-            -e SLACK_CHANNEL="$SLACK_CHANNEL" \
-            -e SMTP_PORT="$SMTP_PORT" \
-            -v "${MON_DIR}:/w" alpine:3.20 sh -lc '
-              set -e
-              apk add --no-cache gettext >/dev/null
-              cd /w
-              mkdir -p generated
-              envsubst < templates/alertmanager.yml.tpl > generated/alertmanager.yml
-              echo "--- alertmanager.yml (primeras líneas) ---"
-              head -n 30 generated/alertmanager.yml || true
-            '
-        '''
+        echo "WORKSPACE = $WORKSPACE"
+        echo "MON_DIR   = $MON_DIR"
 
-        // 3) Levanta el stack con el compose que monta ./generated/alertmanager.yml
-        sh '''
-          set -e
-          cd "${MON_DIR}"
-          docker compose -f docker-compose.monitor.yml up -d --remove-orphans
-        '''
-      }
+        # Sanity checks para que falle con mensaje claro si falta algo
+        if [ ! -d "$MON_DIR" ]; then
+          echo "❌ No existe $MON_DIR"; ls -la "$WORKSPACE"; exit 1
+        fi
+        if [ ! -f "$MON_DIR/templates/alertmanager.yml.tpl" ]; then
+          echo "❌ Falta $MON_DIR/templates/alertmanager.yml.tpl"
+          ls -la "$MON_DIR" || true
+          ls -la "$MON_DIR/templates" || true
+          exit 1
+        fi
+
+        # Crear carpeta de salida dentro del workspace (no /generated)
+        mkdir -p "$MON_DIR/generated"
+
+        # Render del template -> generated/alertmanager.yml
+        docker run --rm \
+          -e SLACK_WEBHOOK_URL="$SLACK_WEBHOOK_URL" \
+          -e ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}" \
+          -e SMTP_FROM="${SMTP_FROM:-alerts@example.com}" \
+          -e SMTP_HOST="${SMTP_HOST:-smtp.example.com}" \
+          -e SMTP_USER="$SMTP_USER" \
+          -e SMTP_PASS="$SMTP_PASS" \
+          -e SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}" \
+          -e SMTP_PORT="${SMTP_PORT:-587}" \
+          -v "$MON_DIR:/w" alpine:3.20 sh -c '
+            set -e
+            apk add --no-cache gettext >/dev/null
+            cd /w
+            envsubst < templates/alertmanager.yml.tpl > generated/alertmanager.yml
+            echo "--- alertmanager.yml (head) ---"
+            head -n 30 generated/alertmanager.yml || true
+          '
+
+        # Levantar el stack de monitoreo
+        cd "$MON_DIR"
+        docker compose -f docker-compose.monitor.yml up -d --remove-orphans
+      '''
     }
   }
 }
+
 
 
     stage('Stress test (k6 via Docker)') {
