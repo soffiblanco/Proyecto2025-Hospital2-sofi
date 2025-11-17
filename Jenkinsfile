@@ -200,41 +200,22 @@ stage('Stress test (k6 via Docker)') {
   steps {
     sh '''
       set -Eeuo pipefail
-      TEST_DIR="${WORKSPACE}/load-tests/k6"
-      mkdir -p "$TEST_DIR"
-
-      # Si NO existe stress.js en el workspace, escribimos uno básico para salir del apuro.
-      if [ ! -f "$TEST_DIR/stress.js" ]; then
-        cat > "$TEST_DIR/stress.js" <<'JS'
-import http from 'k6/http';
-import { check, sleep } from 'k6';
-
-export const options = { vus: 2, duration: '10s' };
-
-export default function () {
-  const base = __ENV.BASE_URL || 'http://localhost:3003';
-  const res = http.get(`${base}/q/health`);
-  check(res, { 'status 200': r => r.status === 200 });
-  sleep(1);
-}
-JS
-        echo "[WARN] No estaba load-tests/k6/stress.js en el workspace; se creó uno mínimo."
-      fi
-
-      echo "Contenido en TEST_DIR:"
-      ls -la "$TEST_DIR"
-      echo "Preview:"
-      head -n 20 "$TEST_DIR/stress.js" || true
 
       BASE_URL="http://localhost:3003"
+      K6_DIR="/var/jenkins_home/workspace/hospital-mbp_prod/load-tests/k6"
+
+      echo "📁 Listando desde un contenedor con los volúmenes de Jenkins:"
+      docker run --rm --volumes-from jenkins:ro busybox sh -lc "ls -la $K6_DIR && head -n 5 $K6_DIR/stress.js || true"
+
+      echo "▶️ Ejecutando k6…"
       docker run --rm --network host \
+        --volumes-from jenkins:ro \
         -e BASE_URL="$BASE_URL" \
-        -v "$TEST_DIR:/tests:ro" \
-        grafana/k6:latest run /tests/stress.js
+        -w "$K6_DIR" \
+        grafana/k6:latest run stress.js
     '''
   }
 }
-
 
 
 
