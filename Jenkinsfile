@@ -203,22 +203,17 @@ stage('Stress test (k6 via Docker)') {
 
       TEST_DIR="$WORKSPACE/load-tests/k6"
       TEST_FILE="$TEST_DIR/stress.js"
-
-      # 1) Verifica que el archivo exista en el workspace
-      if [ ! -f "$TEST_FILE" ]; then
-        echo "❌ No existe: $TEST_FILE"
-        ls -la "$TEST_DIR" || true
-        exit 1
-      fi
-
-      # 2) URL base de tu app
       BASE_URL="http://localhost:${PORT:-3003}"
-      echo "BASE_URL=${BASE_URL}"
 
-      # (debug opcional) verifica que el volumen tenga el archivo dentro del contenedor
-      docker run --rm -v "$TEST_DIR:/tests:ro" busybox sh -lc 'ls -la /tests && head -n 5 /tests/stress.js'
+      # 1) Verifica que el archivo exista en el host
+      echo "📁 Host TEST_DIR: $TEST_DIR"
+      ls -la "$TEST_DIR"
+      [ -f "$TEST_FILE" ] || { echo "❌ Falta $TEST_FILE"; exit 1; }
 
-      # 3) Ejecuta k6 montando la carpeta correcta y pasando BASE_URL
+      # 2) Verifica que el archivo esté montado dentro del contenedor
+      docker run --rm -v "$TEST_DIR:/tests:ro" busybox sh -lc 'echo "📦 Contenido en /tests:"; ls -la /tests; head -n 5 /tests/stress.js || true'
+
+      # 3) Ejecuta k6 usando la ruta ABSOLUTA
       docker run --rm --network host \
         -e BASE_URL="$BASE_URL" \
         -v "$TEST_DIR:/tests:ro" \
@@ -226,6 +221,7 @@ stage('Stress test (k6 via Docker)') {
     '''
   }
 }
+
 
 
 
