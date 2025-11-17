@@ -198,20 +198,49 @@ YAML
 
 
 
-    stage('Stress test (k6 via Docker)') {
-      when { expression { fileExists('load-tests/k6/stress.js') } }
-      steps {
-        sh '''
-          set -e
-          BASE_URL="http://localhost:${PORT}"
-          echo "k6 BASE_URL=${BASE_URL}"
-          docker run --rm --network host \
-            -e BASE_URL="${BASE_URL}" \
-            -v "$PWD/load-tests/k6:/tests" grafana/k6 run /tests/stress.js
-        '''
-      }
-      post { failure { notify('FALLÓ', 'Stress test k6') } }
-    }
+stage('Stress test (k6 via Docker)') {
+  steps {
+    sh """
+      set -e
+      mkdir -p "\${WORKSPACE}/load-tests/k6"
+
+      echo "Verificando script en: \${WORKSPACE}/load-tests/k6"
+      ls -la "\${WORKSPACE}/load-tests/k6" || true
+
+      if [ ! -f "\${WORKSPACE}/load-tests/k6/stress.js" ]; then
+        echo "No existe stress.js, creando uno básico..."
+        cat > "\${WORKSPACE}/load-tests/k6/stress.js" <<'EOF'
+import http from 'k6/http';
+import { sleep, check } from 'k6';
+
+export const options = {
+  thresholds: { http_req_failed: ['rate<0.01'], http_req_duration: ['p(95)<800'] },
+  stages: [{ duration: '10s', target: 5 }, { duration: '20s', target: 10 }, { duration: '10s', target: 0 }],
+};
+
+const BASE = __ENV.BASE_URL || 'http://localhost:3003';
+const PATH = '/q/health'; // cambia a '/' si no tienes /q/health
+
+export default function () {
+  const res = http.get(`${BASE}${PATH}`);
+  check(res, { 'status 200': r => r.status === 200 });
+  sleep(1);
+}
+EOF
+      fi
+
+      BASE_URL="http://localhost:${PORT}"
+      echo "k6 BASE_URL=\${BASE_URL}"
+
+      docker run --rm --network host \\
+        -e BASE_URL="\${BASE_URL}" \\
+        -v "\${WORKSPACE}/load-tests/k6:/tests:ro" \\
+        --workdir /tests \\
+        grafana/k6 run stress.js
+    """
+  }
+}
+
 
     stage('Stress test (JMeter via Docker)') {
       when { expression { fileExists('load-tests/jmeter/stress_test.jmx') } }
