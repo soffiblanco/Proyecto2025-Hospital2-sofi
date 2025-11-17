@@ -50,10 +50,17 @@ pipeline {
       }
     }
 
-    stage('Checkout') {
-      steps { checkout scm }
-      post { failure { notify('FALLÓ', 'Checkout del repo') } }
-    }
+stage('Checkout') {
+  steps {
+    deleteDir()          // limpia workspace
+    checkout scm
+    sh '''
+      echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
+      ls -la "$PWD/load-tests/k6" || true
+    '''
+  }
+}
+
 
     stage('Build & Tests (Maven Wrapper)') {
       steps {
