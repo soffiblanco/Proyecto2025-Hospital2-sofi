@@ -196,27 +196,15 @@ YAML
   }
 }
 
-
-
-
-
-
-
-
-
-
 stage('Stress test (k6 via Docker)') {
   steps {
-    sh """
+    sh '''
       set -e
-      mkdir -p "\${WORKSPACE}/load-tests/k6"
 
-      echo "Verificando script en: \${WORKSPACE}/load-tests/k6"
-      ls -la "\${WORKSPACE}/load-tests/k6" || true
-
-      if [ ! -f "\${WORKSPACE}/load-tests/k6/stress.js" ]; then
-        echo "No existe stress.js, creando uno básico..."
-        cat > "\${WORKSPACE}/load-tests/k6/stress.js" <<'EOF'
+      # Asegura que el script exista (por si el repo no lo trae)
+      mkdir -p "$WORKSPACE/load-tests/k6"
+      if [ ! -f "$WORKSPACE/load-tests/k6/stress.js" ]; then
+        cat > "$WORKSPACE/load-tests/k6/stress.js" <<'EOF'
 import http from 'k6/http';
 import { sleep, check } from 'k6';
 
@@ -226,7 +214,7 @@ export const options = {
 };
 
 const BASE = __ENV.BASE_URL || 'http://localhost:3003';
-const PATH = '/q/health'; // cambia a '/' si no tienes /q/health
+const PATH = '/q/health';
 
 export default function () {
   const res = http.get(`${BASE}${PATH}`);
@@ -236,17 +224,19 @@ export default function () {
 EOF
       fi
 
-      BASE_URL="http://localhost:${PORT}"
-      echo "k6 BASE_URL=\${BASE_URL}"
+      # Usa $PORT (expandido por el shell), NO ${PORT} ni ${...} que Groovy pueda ver
+      BASE_URL="http://localhost:$PORT"
+      echo "k6 BASE_URL=$BASE_URL"
 
-      docker run --rm --network host \\
-        -e BASE_URL="\${BASE_URL}" \\
-        -v "\${WORKSPACE}/load-tests/k6:/tests:ro" \\
-        --workdir /tests \\
+      docker run --rm --network host \
+        -e BASE_URL="$BASE_URL" \
+        -v "$WORKSPACE/load-tests/k6:/tests:ro" \
+        -w /tests \
         grafana/k6 run stress.js
-    """
+    '''
   }
 }
+
 
 
     stage('Stress test (JMeter via Docker)') {
