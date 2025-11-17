@@ -201,21 +201,24 @@ stage('Stress test (k6 via Docker)') {
     sh '''
       set -Eeuo pipefail
 
+      WORKSPACE_IN_JENKINS="/var/jenkins_home/workspace/hospital-mbp_prod"
+      K6_DIR="$WORKSPACE_IN_JENKINS/load-tests/k6"
       BASE_URL="http://localhost:3003"
-      K6_DIR="/var/jenkins_home/workspace/hospital-mbp_prod/load-tests/k6"
 
-      echo "📁 Listando desde un contenedor con los volúmenes de Jenkins:"
-      docker run --rm --volumes-from jenkins:ro busybox sh -lc "ls -la $K6_DIR && head -n 5 $K6_DIR/stress.js || true"
+      echo "📁 Listando ${K6_DIR} dentro del contenedor Jenkins (lo montaremos con --volumes-from)..."
+      ls -la "$K6_DIR"
 
-      echo "▶️ Ejecutando k6…"
+      # Ejecuta k6 usando los volúmenes del contenedor jenkins
       docker run --rm --network host \
         --volumes-from jenkins:ro \
-        -e BASE_URL="$BASE_URL" \
         -w "$K6_DIR" \
+        -e BASE_URL="$BASE_URL" \
         grafana/k6:latest run stress.js
     '''
   }
 }
+
+
 
 
 

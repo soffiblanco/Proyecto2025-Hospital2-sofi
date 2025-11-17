@@ -1,11 +1,10 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-// Configuration
 export const options = {
   thresholds: {
-    http_req_failed: ['rate<0.01'], // <1% errores
-    http_req_duration: ['p(95)<1200'], // p95 < 1.2s
+    http_req_failed: ['rate<0.01'],
+    http_req_duration: ['p(95)<1200'],
   },
   scenarios: {
     stress_5000_users: {
@@ -22,25 +21,17 @@ export const options = {
   },
 };
 
-const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
-
-// Public endpoints to stress without auth
-const endpoints = [
-  '/api/servicios',
-  '/api/page-content/home',
-];
+const BASE_URL = __ENV.BASE_URL || 'http://localhost:3003'; // <-- 3003 por defecto
+const endpoints = ['/api/servicios', '/api/page-content/home'];
 
 export default function () {
   for (const path of endpoints) {
-    const res = http.get(`${BASE_URL}${path}`, { tags: { name: path } });
+    const res = http.get(`${BASE_URL}${path}`, { tags: { endpoint: path } });
     check(res, {
-      'status is 2xx': r => r.status >= 200 && r.status < 300,
-      'has body': r => (r.body || '').length > 0,
+      'status < 400': r => r.status < 400,   // acepta 2xx/3xx si hay redirección
+      'has body':     r => (r.body || '').length > 0,
     });
-    // Pequeño tiempo entre peticiones para simular usuarios reales
     sleep(Math.random() * 0.1);
   }
   sleep(Math.random() * 0.5);
 }
-
-
