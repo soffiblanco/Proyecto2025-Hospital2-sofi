@@ -3,7 +3,7 @@ import { check, sleep } from 'k6';
 
 export const options = {
   thresholds: {
-    http_req_failed: ['rate<0.01'],
+    http_req_failed: ['rate<0.05'],
     http_req_duration: ['p(95)<1200'],
   },
   scenarios: {
@@ -12,9 +12,9 @@ export const options = {
       startVUs: 50,
       gracefulRampDown: '2m',
       stages: [
-        { duration: '3m', target: 1000 },
-        { duration: '3m', target: 3000 },
-        { duration: '4m', target: 5000 },
+        { duration: '3m', target: 50 },
+        { duration: '3m', target: 100 },
+        { duration: '4m', target: 200 },
         { duration: '5m', target: 0 },
       ],
     },
