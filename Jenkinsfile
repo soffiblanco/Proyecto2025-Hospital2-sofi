@@ -201,41 +201,32 @@ stage('Stress test (k6 via Docker)') {
     sh '''
       set -e
 
-      # Asegura que el script exista (por si el repo no lo trae)
-      mkdir -p "$WORKSPACE/load-tests/k6"
-      if [ ! -f "$WORKSPACE/load-tests/k6/stress.js" ]; then
-        cat > "$WORKSPACE/load-tests/k6/stress.js" <<'EOF'
-import http from 'k6/http';
-import { sleep, check } from 'k6';
+      TEST_DIR="$WORKSPACE/load-tests/k6"
+      TEST_FILE="$TEST_DIR/stress.js"
 
-export const options = {
-  thresholds: { http_req_failed: ['rate<0.01'], http_req_duration: ['p(95)<800'] },
-  stages: [{ duration: '10s', target: 5 }, { duration: '20s', target: 10 }, { duration: '10s', target: 0 }],
-};
-
-const BASE = __ENV.BASE_URL || 'http://localhost:3003';
-const PATH = '/q/health';
-
-export default function () {
-  const res = http.get(`${BASE}${PATH}`);
-  check(res, { 'status 200': r => r.status === 200 });
-  sleep(1);
-}
-EOF
+      # 1) Verifica que el archivo exista en el workspace
+      if [ ! -f "$TEST_FILE" ]; then
+        echo "❌ No existe: $TEST_FILE"
+        ls -la "$TEST_DIR" || true
+        exit 1
       fi
 
-      # Usa $PORT (expandido por el shell), NO ${PORT} ni ${...} que Groovy pueda ver
-      BASE_URL="http://localhost:$PORT"
-      echo "k6 BASE_URL=$BASE_URL"
+      # 2) URL base de tu app
+      BASE_URL="http://localhost:${PORT:-3003}"
+      echo "BASE_URL=${BASE_URL}"
 
+      # (debug opcional) verifica que el volumen tenga el archivo dentro del contenedor
+      docker run --rm -v "$TEST_DIR:/tests:ro" busybox sh -lc 'ls -la /tests && head -n 5 /tests/stress.js'
+
+      # 3) Ejecuta k6 montando la carpeta correcta y pasando BASE_URL
       docker run --rm --network host \
         -e BASE_URL="$BASE_URL" \
-        -v "$WORKSPACE/load-tests/k6:/tests:ro" \
-        -w /tests \
-        grafana/k6 run stress.js
+        -v "$TEST_DIR:/tests:ro" \
+        grafana/k6:latest run /tests/stress.js
     '''
   }
 }
+
 
 
 
