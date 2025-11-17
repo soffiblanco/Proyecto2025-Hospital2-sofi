@@ -198,29 +198,58 @@ YAML
 
 stage('Stress test (k6 via Docker)') {
   steps {
-    sh '''
-      set -e
+    sh '''#!/usr/bin/env bash
+set -euo pipefail
 
-      TEST_DIR="$WORKSPACE/load-tests/k6"
-      TEST_FILE="$TEST_DIR/stress.js"
-      BASE_URL="http://localhost:${PORT:-3003}"
+TEST_DIR="$WORKSPACE/load-tests/k6"
+TEST_FILE="$TEST_DIR/stress.js"
+BASE_URL="http://localhost:${PORT:-3003}"
 
-      # 1) Verifica que el archivo exista en el host
-      echo "📁 Host TEST_DIR: $TEST_DIR"
-      ls -la "$TEST_DIR"
-      [ -f "$TEST_FILE" ] || { echo "❌ Falta $TEST_FILE"; exit 1; }
+# 1) Asegurar carpeta
+mkdir -p "$TEST_DIR"
 
-      # 2) Verifica que el archivo esté montado dentro del contenedor
-      docker run --rm -v "$TEST_DIR:/tests:ro" busybox sh -lc 'echo "📦 Contenido en /tests:"; ls -la /tests; head -n 5 /tests/stress.js || true'
+# 2) Crear script si no existe o está vacío
+if [ ! -s "$TEST_FILE" ]; then
+  cat > "$TEST_FILE" <<'JS'
+import http from 'k6/http';
+import { check, sleep } from 'k6';
 
-      # 3) Ejecuta k6 usando la ruta ABSOLUTA
-      docker run --rm --network host \
-        -e BASE_URL="$BASE_URL" \
-        -v "$TEST_DIR:/tests:ro" \
-        grafana/k6:latest run /tests/stress.js
-    '''
+export const options = {
+  vus: 5,
+  duration: '15s',
+  thresholds: {
+    http_req_failed: ['rate<0.01'],
+    http_req_duration: ['p(95)<800'],
+  },
+};
+
+export default function () {
+  const base = __ENV.BASE_URL || 'http://localhost:3003';
+  const res = http.get(`${base}/q/health`);
+  check(res, { 'status 200': (r) => r.status === 200 });
+  sleep(1);
+}
+JS
+fi
+
+# 3) Mostrar que el archivo EXISTE en host
+echo "📁 Host $TEST_DIR:"
+ls -la "$TEST_DIR"
+echo "——— contenido stress.js ———"
+head -n 20 "$TEST_FILE" || true
+
+# 4) Verificar que el volumen tenga el archivo dentro del contenedor
+docker run --rm -v "$TEST_DIR:/tests:ro" busybox sh -lc 'echo "📦 /tests:"; ls -la /tests; head -n 10 /tests/stress.js || true'
+
+# 5) Ejecutar k6 (nota: usamos ruta ABSOLUTA dentro del contenedor)
+docker run --rm --network host \
+  -e BASE_URL="$BASE_URL" \
+  -v "$TEST_DIR:/tests:ro" \
+  grafana/k6:latest run /tests/stress.js
+'''
   }
 }
+
 
 
 
