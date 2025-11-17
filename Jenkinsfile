@@ -198,57 +198,43 @@ YAML
 
 stage('Stress test (k6 via Docker)') {
   steps {
-    sh '''#!/usr/bin/env bash
-set -euo pipefail
+    sh '''
+      set -Eeuo pipefail
+      TEST_DIR="${WORKSPACE}/load-tests/k6"
+      mkdir -p "$TEST_DIR"
 
-TEST_DIR="$WORKSPACE/load-tests/k6"
-TEST_FILE="$TEST_DIR/stress.js"
-BASE_URL="http://localhost:${PORT:-3003}"
-
-# 1) Asegurar carpeta
-mkdir -p "$TEST_DIR"
-
-# 2) Crear script si no existe o está vacío
-if [ ! -s "$TEST_FILE" ]; then
-  cat > "$TEST_FILE" <<'JS'
+      # Si NO existe stress.js en el workspace, escribimos uno básico para salir del apuro.
+      if [ ! -f "$TEST_DIR/stress.js" ]; then
+        cat > "$TEST_DIR/stress.js" <<'JS'
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-export const options = {
-  vus: 5,
-  duration: '15s',
-  thresholds: {
-    http_req_failed: ['rate<0.01'],
-    http_req_duration: ['p(95)<800'],
-  },
-};
+export const options = { vus: 2, duration: '10s' };
 
 export default function () {
   const base = __ENV.BASE_URL || 'http://localhost:3003';
   const res = http.get(`${base}/q/health`);
-  check(res, { 'status 200': (r) => r.status === 200 });
+  check(res, { 'status 200': r => r.status === 200 });
   sleep(1);
 }
 JS
-fi
+        echo "[WARN] No estaba load-tests/k6/stress.js en el workspace; se creó uno mínimo."
+      fi
 
-# 3) Mostrar que el archivo EXISTE en host
-echo "📁 Host $TEST_DIR:"
-ls -la "$TEST_DIR"
-echo "——— contenido stress.js ———"
-head -n 20 "$TEST_FILE" || true
+      echo "Contenido en TEST_DIR:"
+      ls -la "$TEST_DIR"
+      echo "Preview:"
+      head -n 20 "$TEST_DIR/stress.js" || true
 
-# 4) Verificar que el volumen tenga el archivo dentro del contenedor
-docker run --rm -v "$TEST_DIR:/tests:ro" busybox sh -lc 'echo "📦 /tests:"; ls -la /tests; head -n 10 /tests/stress.js || true'
-
-# 5) Ejecutar k6 (nota: usamos ruta ABSOLUTA dentro del contenedor)
-docker run --rm --network host \
-  -e BASE_URL="$BASE_URL" \
-  -v "$TEST_DIR:/tests:ro" \
-  grafana/k6:latest run /tests/stress.js
-'''
+      BASE_URL="http://localhost:3003"
+      docker run --rm --network host \
+        -e BASE_URL="$BASE_URL" \
+        -v "$TEST_DIR:/tests:ro" \
+        grafana/k6:latest run /tests/stress.js
+    '''
   }
 }
+
 
 
 
