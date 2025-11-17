@@ -3,23 +3,24 @@ import { check, sleep } from 'k6';
 
 export const options = {
   thresholds: {
-    http_req_failed: ['rate<0.05'],
+    http_req_failed: ['rate<0.01'],
     http_req_duration: ['p(95)<1200'],
   },
   scenarios: {
-    stress_5000_users: {
+    stress_200_users: {
       executor: 'ramping-vus',
-      startVUs: 50,
-      gracefulRampDown: '2m',
+      startVUs: 10,
       stages: [
-        { duration: '3m', target: 50 },
-        { duration: '3m', target: 100 },
-        { duration: '4m', target: 200 },
-        { duration: '5m', target: 0 },
+        { duration: '1m', target: 50 },
+        { duration: '2m', target: 200 }, // pico = 200
+        { duration: '3m', target: 200 }, // mantener 200
+        { duration: '1m', target: 0 },
       ],
+      gracefulRampDown: '30s',
     },
   },
 };
+
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:3003'; // <-- 3003 por defecto
 const endpoints = ['/api/servicios', '/api/page-content/home'];
