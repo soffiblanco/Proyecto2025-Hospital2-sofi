@@ -6,61 +6,19 @@ pipeline {
     disableConcurrentBuilds()
   }
 
-  triggers { pollSCM('H/2 * * * *') }
-
   environment {
-    IMAGE             = 'miapp'
-    APP_PORT_INTERNAL = '8080'
-    SONARQUBE_ENV     = 'SonarLocal'
-    MAIL_TO           = 'msblanco@unis.edu.gt, mariasofiablanco9@gmail.com'
+    IMAGE          = 'miapp'         // imagen local por rama: miapp:<branch>
+    APP_PORT_INTERNAL = '8080'       // Quarkus expone 8080 dentro del contenedor
+    SONARQUBE_ENV  = 'SonarLocal'    // nombre del servidor Sonar en Jenkins
   }
+
+  triggers { pollSCM('H/2 * * * *') } // sin webhooks
 
   stages {
 
-    stage('Init Vars') {
-      steps {
-        script {
-          // Base segura sin sudo (dentro de JENKINS_HOME)
-          def base = env.JENKINS_HOME ?: '/var/jenkins_home'
-          env.SQLITE_BASE = "${base}/sqlite"
-
-          // Vars por rama
-          env.PORT = (env.BRANCH_NAME == 'dev') ? '3001'
-                   : (env.BRANCH_NAME == 'uat') ? '3002'
-                   : '3003' // prod/master -> 3003
-
-          env.SQLITE_DIR = "${env.SQLITE_BASE}/${env.BRANCH_NAME}"
-          env.CNAME = "app_${env.BRANCH_NAME}"
-
-          echo "Branch=${env.BRANCH_NAME}, PORT=${env.PORT}"
-          echo "SQLite base=${env.SQLITE_BASE}, dir por rama=${env.SQLITE_DIR}"
-          echo "Container name=${env.CNAME}"
-        }
-      }
+    stage('Checkout') {
+      steps { checkout scm }
     }
-
-    stage('Prepare DB dir') {
-      steps {
-        sh '''
-          set -e
-          mkdir -p "${SQLITE_DIR}"
-          chmod 777 "${SQLITE_DIR}"
-          echo "SQLite dir: ${SQLITE_DIR}"
-        '''
-      }
-    }
-
-stage('Checkout') {
-  steps {
-    deleteDir()          // limpia workspace
-    checkout scm
-    sh '''
-      echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
-      ls -la "$PWD/load-tests/k6" || true
-    '''
-  }
-}
-
 
     stage('Build & Tests (Maven Wrapper)') {
       steps {
@@ -71,15 +29,11 @@ stage('Checkout') {
           ./mvnw -B -DskipTests=false clean verify
         '''
       }
-      post {
-        unstable { notify('INESTABLE', 'Unit tests con fallos') }
-        failure  { notify('FALLÓ', 'Build o unit tests') }
-      }
     }
 
     stage('SonarQube Analysis') {
       steps {
-        withSonarQubeEnv("${SONARQUBE_ENV}") {
+        withSonarQubeEnv('SonarLocal') {
           sh '''
             set -e
             cd backend
@@ -92,141 +46,99 @@ stage('Checkout') {
           '''
         }
       }
-      post { failure { notify('FALLÓ', 'Análisis SonarQube') } }
     }
+    
+    
 
     stage('Quality Gate') {
       steps {
-        timeout(time: 15, unit: 'MINUTES') {
-          // Requiere webhook en Sonar → http(s)://<jenkins>/sonarqube-webhook/
+        timeout(time: 5, unit: 'MINUTES') {
           waitForQualityGate abortPipeline: true
         }
       }
-      post { failure { notify('FALLÓ', 'Quality Gate de SonarQube') } }
     }
 
     stage('Docker Build (backend/Dockerfile.jvm)') {
       steps {
+        // Usa TU Dockerfile dentro de backend y el contexto "backend/"
         sh "docker build -f backend/Dockerfile.jvm -t ${IMAGE}:${env.BRANCH_NAME} backend"
       }
-      post { failure { notify('FALLÓ', 'Docker build') } }
     }
 
     stage('Deploy per branch (SQLite)') {
       steps {
-        sh '''
-          set -e
-          docker network create appnet || true
-          docker rm -f "${CNAME}" || true
-
-          # Montamos ${SQLITE_DIR} en /data y apuntamos la URL de SQLite ahí
-          docker run -d --name "${CNAME}" --restart=unless-stopped \
-            --network appnet \
-            -p "${PORT}:${APP_PORT_INTERNAL}" \
-            -v "${SQLITE_DIR}:/data" \
-            -e QUARKUS_DATASOURCE_JDBC_URL="jdbc:sqlite:/data/app.db" \
-            ${IMAGE}:${BRANCH_NAME}
-
-          echo "✅ Desplegado ${CNAME} en puerto ${PORT} con DB en ${SQLITE_DIR} -> /data/app.db"
-        '''
-      }
-      post { failure { notify('FALLÓ', 'Despliegue por rama') } }
-    }
-
-stage('Start Monitoring Stack') {
-  steps {
-    withCredentials([
-      string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK_URL'),
-      usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
-    ]) {
-      sh '''
-        set -Eeuo pipefail
-
-        MON_DIR="${WORKSPACE}/monitoring"
-        OUT_DIR="${MON_DIR}/generated"
-        COMPOSE_FILE="${MON_DIR}/docker-compose.yml"
-
-        mkdir -p "${OUT_DIR}"
-        # --- guard contra directorio con nombre de archivo ---
-        if [ -d "${OUT_DIR}/alertmanager.yml" ]; then
-          rm -rf "${OUT_DIR}/alertmanager.yml"
-        fi
-
-        ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}"
-        SMTP_FROM="${SMTP_FROM:-alerts@example.com}"
-        SMTP_HOST="${SMTP_HOST:-smtp.example.com}"
-        SMTP_PORT="${SMTP_PORT:-587}"
-        SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}"
-
-        cat > "${OUT_DIR}/alertmanager.yml" <<YAML
-route:
-  receiver: 'team-alerts'
-  group_by: ['alertname']
-  group_wait: 30s
-  group_interval: 2m
-  repeat_interval: 2h
-
-receivers:
-  - name: 'team-alerts'
-    slack_configs:
-      - send_resolved: true
-        api_url: '${SLACK_WEBHOOK_URL}'
-        channel: '${SLACK_CHANNEL}'
-        title: 'ALERTA {{ .Status }}: {{ .CommonLabels.alertname }}'
-        text: |
-          Detalles:
-          {{ range .Alerts }}• {{ .Annotations.summary }} ({{ .Labels.severity }})
-          {{ end }}
-    email_configs:
-      - to: '${ALERT_EMAILS}'
-        from: '${SMTP_FROM}'
-        smarthost: '${SMTP_HOST}:${SMTP_PORT}'
-        auth_username: '${SMTP_USER}'
-        auth_identity: '${SMTP_USER}'
-        auth_password: '${SMTP_PASS}'
-        require_tls: true
-YAML
-
-        echo "--- alertmanager.yml (preview) ---"
-        head -n 30 "${OUT_DIR}/alertmanager.yml" || true
-
-        docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans
-      '''
-    }
+script {
+  // Mapea PUERTO, VOLUMEN y DB por rama
+  def port, hostDir, dbFile, cname
+  switch (env.BRANCH_NAME) {
+    case 'dev':
+      port   = '3001'
+      hostDir= '/srv/sqlite/dev'
+      dbFile = '/data/sqlite/dev.db'
+      cname  = 'app_dev'
+      break
+    case 'uat':
+      port   = '3002'
+      hostDir= '/srv/sqlite/uat'
+      dbFile = '/data/sqlite/uat.db'
+      cname  = 'app_uat'
+      break
+    case 'master':
+      // <<— master con SU puerto y SU volumen
+      port   = '3001'    // o 3004 si ya usas 3001 en dev
+      hostDir= '/srv/sqlite/master'
+      dbFile = '/data/sqlite/master.db'
+      cname  = 'app_master'
+      break
+    case 'prod':
+      port   = '3003'
+      hostDir= '/srv/sqlite/prod'
+      dbFile = '/data/sqlite/prod.db'
+      cname  = 'app_prod'
+      break
+    default:
+      // ramas feature/* aisladas
+      port   = '3010'
+      hostDir= "/srv/sqlite/${env.BRANCH_NAME}"
+      dbFile = "/data/sqlite/${env.BRANCH_NAME}.db"
+      cname  = "app_${env.BRANCH_NAME}"
   }
+
+  sh 'docker network create appnet || true'
+
+  // TIP: chequeo rápido de puerto en uso (solo informativo)
+  sh """
+    if ss -ltn | grep -q ":${port} "; then
+      echo "⚠️  Puerto ${port} ya en uso en host. Voy a reemplazar contenedor ${cname} si existe."
+    fi
+  """
+
+  // Reemplaza contenedor si existe
+  sh "docker rm -f ${cname} || true"
+
+  // Asegura que exista el directorio del volumen
+  sh "mkdir -p ${hostDir}"
+
+  // Despliegue
+  sh """
+    docker run -d --name ${cname} --restart=unless-stopped \\
+      --network appnet \\
+      -e DB_FILE='${dbFile}' \\
+      -p ${port}:${APP_PORT_INTERNAL} \\
+      -v ${hostDir}:/data/sqlite \\
+      ${IMAGE}:${env.BRANCH_NAME}
+  """
+
+  echo "✅ Desplegado ${cname} en puerto ${port} usando DB_FILE=${dbFile}"
 }
 
-
+      }
+    }
   }
 
   post {
-    success { notify('OK', 'Pipeline completado') }
-    failure { notify('FALLÓ', 'Fallo global del pipeline (catch-all)') }
-    always  { sh "docker ps --format 'table {{.Names}}\\t{{.Ports}}\\t{{.Status}}'" }
+    always {
+      sh "docker ps --format 'table {{.Names}}\\t{{.Ports}}\\t{{.Status}}'"
+    }
   }
-}
-
-// ---- Helper de correo (emailext simple) ----
-def notify(String estado, String motivo) {
-  def asunto = "[${env.JOB_NAME}][${env.BRANCH_NAME}] #${env.BUILD_NUMBER} – ${estado}"
-  def html = """
-  <h2>${motivo}</h2>
-  <table border="1" cellpadding="6" cellspacing="0">
-    <tr><td><b>Job</b></td><td>${env.JOB_NAME}</td></tr>
-    <tr><td><b>Rama</b></td><td>${env.BRANCH_NAME}</td></tr>
-    <tr><td><b>Build</b></td><td>#${env.BUILD_NUMBER} – ${currentBuild.currentResult}</td></tr>
-    <tr><td><b>Duración</b></td><td>${currentBuild.durationString}</td></tr>
-    <tr><td><b>Consola</b></td><td><a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></td></tr>
-    <tr><td><b>Artefactos</b></td><td><a href="${env.BUILD_URL}artifact">${env.BUILD_URL}artifact</a></td></tr>
-  </table>
-  <p>Quality Gate: revisar en Sonar → <i>Project: hospital-mbp-backend</i></p>
-  """
-  emailext(
-    subject: asunto,
-    to: env.MAIL_TO,
-    mimeType: 'text/html',
-    body: html,
-    replyTo: 'msblanco@unis.edu.gt',
-    from:  'CI Hospital <msblanco@unis.edu.gt>'
-  )
 }
