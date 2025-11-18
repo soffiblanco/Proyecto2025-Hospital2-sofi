@@ -1,4 +1,5 @@
 version: '3.8'
+
 services:
   prometheus:
     image: prom/prometheus:v2.54.1
@@ -7,10 +8,12 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.retention.time=15d
     volumes:
-      - ./prometheus:/etc/prometheus:ro     # <— monta la carpeta completa
+      - ./prometheus:/etc/prometheus:ro
     ports:
       - "9090:9090"
-    networks: [mon, appnet]
+    networks:
+      - mon
+      - appnet
 
   alertmanager:
     image: prom/alertmanager:v0.27.0
@@ -25,17 +28,17 @@ services:
       - mon
       - appnet
 
-
   grafana:
     image: grafana/grafana:11.2.0
     container_name: grafana
+    user: "0"   # <- fix de permisos, corre como root dentro del contenedor
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
       - ./grafana/provisioning/alerting/notification-policies.yaml:/etc/grafana/provisioning/alerting/notification-policies.yaml:ro
       - ./grafana/provisioning/alerting/alert-rules.yaml:/etc/grafana/provisioning/alerting/alert-rules.yaml:ro
       - ./generated/grafana-contact-points.yaml:/etc/grafana/provisioning/alerting/contact-points.yaml:ro
@@ -83,7 +86,6 @@ services:
     image: prom/blackbox-exporter:v0.25.0
     container_name: blackbox
     volumes:
-      # Monta la carpeta completa con la config dentro
       - ./blackbox:/etc/blackbox_exporter:ro
     command:
       - --config.file=/etc/blackbox_exporter/blackbox.yml
@@ -93,12 +95,9 @@ services:
       - mon
       - appnet
 
-
 networks:
   mon:
     driver: bridge
 
   appnet:
     external: true
-
-
