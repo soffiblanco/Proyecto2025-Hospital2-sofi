@@ -1,0 +1,104 @@
+version: '3.8'
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./prometheus:/etc/prometheus:ro     # <— monta la carpeta completa
+    ports:
+      - "9090:9090"
+    networks: [mon, appnet]
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+    volumes:
+      - ./generated:/etc/alertmanager:ro
+    ports:
+      - "9093:9093"
+    networks:
+      - mon
+      - appnet
+
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./grafana/provisioning/alerting/notification-policies.yaml:/etc/grafana/provisioning/alerting/notification-policies.yaml:ro
+      - ./grafana/provisioning/alerting/alert-rules.yaml:/etc/grafana/provisioning/alerting/alert-rules.yaml:ro
+      - ./generated/grafana-contact-points.yaml:/etc/grafana/provisioning/alerting/contact-points.yaml:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - mon
+      - appnet
+    depends_on:
+      - prometheus
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: node-exporter
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($|/)
+      - --collector.filesystem.ignored-fs-types=^(sysfs|procfs|autofs|cgroup|tmpfs|devpts|nsfs|aufs|overlay)$
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    ports:
+      - "9100:9100"
+    networks:
+      - mon
+      - appnet
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.2
+    container_name: cadvisor
+    ports:
+      - "8085:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - mon
+      - appnet
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox
+    volumes:
+      # Monta la carpeta completa con la config dentro
+      - ./blackbox:/etc/blackbox_exporter:ro
+    command:
+      - --config.file=/etc/blackbox_exporter/blackbox.yml
+    ports:
+      - "9115:9115"
+    networks:
+      - mon
+      - appnet
+
+
+networks:
+  mon:
+    driver: bridge
+
+  appnet:
+    external: true
+
+
