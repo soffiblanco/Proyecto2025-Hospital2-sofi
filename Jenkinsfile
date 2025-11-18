@@ -301,15 +301,17 @@ def pushNetdataMetric(String metric, def value, String type = 'ms') {
     return
   }
 
+  def payload = "${metric}:${value}|${type}"
+
   try {
     sh(
       label: "netdata ${metric}",
       script: """#!/bin/bash
-set -euo pipefail
-if [ -z "${NETDATA_HOST:-}" ] || [ -z "${NETDATA_STATSD_PORT:-}" ]; then
+set -eo pipefail
+if [ -z "${env.NETDATA_HOST}" ] || [ -z "${env.NETDATA_STATSD_PORT}" ]; then
   exit 0
 fi
-echo -n '${metric}:${value}|${type}' > /dev/udp/${NETDATA_HOST}/${NETDATA_STATSD_PORT}
+echo -n '${payload}' > /dev/udp/${env.NETDATA_HOST}/${env.NETDATA_STATSD_PORT}
 """
     )
   } catch (err) {
