@@ -48,3 +48,52 @@ El frontend consume la API desde `import.meta.env.VITE_API_URL` definido en `.en
 - Backend: `http://localhost:8080`
 - Health (Quarkus): `http://localhost:8080/q/health`
 - Frontend: `http://localhost:5173`
+
+## Monitoreo CI/CD (Prometheus, Grafana y Netdata)
+
+El pipeline de Jenkins levanta automáticamente el stack definido en `monitoring/docker-compose.yml`, que ahora incluye Netdata para métricas del host y del pipeline.
+
+### Credenciales requeridas en Jenkins
+Configura los siguientes `Credentials`:
+
+- `slack-webhook` → tipo **Secret text** con el Webhook de Slack.
+- `smtp-creds` → tipo **Username with password** (usuario/contraseña SMTP).
+- `jenkins-monitor-creds` → tipo **Username with password** (usuario Jenkins + API Token) usado por Netdata para consultar el estado de los jobs.
+
+Además, puedes sobrescribir vía variables del job:
+
+| Variable | Descripción | Default |
+|----------|-------------|---------|
+| `ALERT_EMAILS` | Lista de correos para alertas | `msblanco@unis.edu.gt,mariasofiablanco9@gmail.com` |
+| `SLACK_CHANNEL` | Canal de Slack destino | `#alerts` |
+| `SMTP_FROM`, `SMTP_HOST`, `SMTP_PORT` | Configuración SMTP opcional | Ver `Jenkinsfile` |
+
+### Levantar manualmente el stack
+
+```sh
+cd monitoring
+docker compose up -d
+```
+
+Servicios expuestos:
+
+- Prometheus → `http://localhost:9090`
+- Grafana → `http://localhost:3000` (admin/admin)
+- Alertmanager → `http://localhost:9093`
+- Netdata → `http://localhost:19999`
+
+### Gráficas y alertas en Netdata
+
+- **Performance (automáticas del agente)**: CPU (`system.cpu`), RAM (`system.ram`), Disco (`disk.util`), Red (`system.net`). Las alertas personalizadas están en `monitoring/netdata/health.d/performance.conf`.
+- **Pipeline (StatsD)**: tiempos de `Build & Tests`, `Quality Gate`, `Docker Build` y `Deploy`, enviados desde el `Jenkinsfile` vía StatsD a Netdata. Las reglas se encuentran en `monitoring/netdata/health.d/pipeline.conf`.
+
+Todas las alarmas se envían por correo y Slack mediante el archivo generado `monitoring/generated/netdata/health_alarm_notify.conf`.
+
+### Cómo probar el flujo completo
+
+1. Ejecuta el pipeline (o corre el stack manualmente si quieres validar local).
+2. Revisa en `docker ps` que el contenedor `netdata` esté activo y que exposición 19999/8125 esté disponible.
+3. Accede a `http://localhost:19999` y busca las gráficas bajo:
+   - `Netdata Monitoring / System Overview` para desempeño.
+   - `StatsD` → métricas `jenkins_pipeline_*`.
+4. Fuerza alertas modificando umbrales en `monitoring/netdata/health.d/*.conf` o generando cargas artificiales; valida recepción en correo y Slack.

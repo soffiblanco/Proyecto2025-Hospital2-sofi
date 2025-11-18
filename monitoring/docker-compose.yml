@@ -95,9 +95,45 @@ services:
       - mon
       - appnet
 
+  netdata:
+    image: netdata/netdata:stable
+    container_name: netdata
+    hostname: netdata
+    restart: unless-stopped
+    ports:
+      - "19999:19999"
+      - "8125:8125/udp"
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - apparmor=unconfined
+    environment:
+      - PGID=0
+      - PUID=0
+    volumes:
+      - netdata_lib:/var/lib/netdata
+      - netdata_cache:/var/cache/netdata
+      - ./generated/netdata/health_alarm_notify.conf:/etc/netdata/health_alarm_notify.conf:ro
+      - ./generated/netdata/go.d/jenkins.conf:/etc/netdata/go.d/jenkins.conf:ro
+      - ./netdata/health.d:/etc/netdata/health.d/custom.d:ro
+      - /etc/passwd:/host/etc/passwd:ro
+      - /etc/group:/host/etc/group:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+    networks:
+      - mon
+      - appnet
+    depends_on:
+      - prometheus
+
 networks:
   mon:
     driver: bridge
 
   appnet:
     external: true
+
+volumes:
+  netdata_lib:
+  netdata_cache:

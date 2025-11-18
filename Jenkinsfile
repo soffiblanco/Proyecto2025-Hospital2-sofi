@@ -13,6 +13,9 @@ pipeline {
     APP_PORT_INTERNAL = '8080'
     SONARQUBE_ENV     = 'SonarLocal'
     MAIL_TO           = 'msblanco@unis.edu.gt, mariasofiablanco9@gmail.com'
+    NETDATA_HOST        = '127.0.0.1'
+    NETDATA_STATSD_PORT = '8125'
+    NETDATA_JENKINS_URL = 'http://jenkins:8080'
   }
 
   stages {
@@ -64,12 +67,20 @@ stage('Checkout') {
 
     stage('Build & Tests (Maven Wrapper)') {
       steps {
-        sh '''
-          set -e
-          cd backend
-          chmod +x mvnw
-          ./mvnw -B -DskipTests=false clean verify
-        '''
+        script {
+          def started = System.currentTimeMillis()
+          try {
+            sh '''
+              set -e
+              cd backend
+              chmod +x mvnw
+              ./mvnw -B -DskipTests=false clean verify
+            '''
+          } finally {
+            def elapsed = System.currentTimeMillis() - started
+            pushNetdataMetric('jenkins_pipeline_build_tests_duration_ms', elapsed, 'ms')
+          }
+        }
       }
       post {
         unstable { notify('INESTABLE', 'Unit tests con fallos') }
@@ -97,9 +108,17 @@ stage('Checkout') {
 
     stage('Quality Gate') {
       steps {
-        timeout(time: 15, unit: 'MINUTES') {
-          // Requiere webhook en Sonar → http(s)://<jenkins>/sonarqube-webhook/
-          waitForQualityGate abortPipeline: true
+        script {
+          def started = System.currentTimeMillis()
+          try {
+            timeout(time: 15, unit: 'MINUTES') {
+              // Requiere webhook en Sonar → http(s)://<jenkins>/sonarqube-webhook/
+              waitForQualityGate abortPipeline: true
+            }
+          } finally {
+            def elapsed = System.currentTimeMillis() - started
+            pushNetdataMetric('jenkins_pipeline_quality_gate_duration_ms', elapsed, 'ms')
+          }
         }
       }
       post { failure { notify('FALLÓ', 'Quality Gate de SonarQube') } }
@@ -107,28 +126,44 @@ stage('Checkout') {
 
     stage('Docker Build (backend/Dockerfile.jvm)') {
       steps {
-        sh "docker build -f backend/Dockerfile.jvm -t ${IMAGE}:${env.BRANCH_NAME} backend"
+        script {
+          def started = System.currentTimeMillis()
+          try {
+            sh "docker build -f backend/Dockerfile.jvm -t ${IMAGE}:${env.BRANCH_NAME} backend"
+          } finally {
+            def elapsed = System.currentTimeMillis() - started
+            pushNetdataMetric('jenkins_pipeline_docker_build_duration_ms', elapsed, 'ms')
+          }
+        }
       }
       post { failure { notify('FALLÓ', 'Docker build') } }
     }
 
     stage('Deploy per branch (SQLite)') {
       steps {
-        sh '''
-          set -e
-          docker network create appnet || true
-          docker rm -f "${CNAME}" || true
+        script {
+          def started = System.currentTimeMillis()
+          try {
+            sh '''
+              set -e
+              docker network create appnet || true
+              docker rm -f "${CNAME}" || true
 
-          # Montamos ${SQLITE_DIR} en /data y apuntamos la URL de SQLite ahí
-          docker run -d --name "${CNAME}" --restart=unless-stopped \
-            --network appnet \
-            -p "${PORT}:${APP_PORT_INTERNAL}" \
-            -v "${SQLITE_DIR}:/data" \
-            -e QUARKUS_DATASOURCE_JDBC_URL="jdbc:sqlite:/data/app.db" \
-            ${IMAGE}:${BRANCH_NAME}
+              # Montamos ${SQLITE_DIR} en /data y apuntamos la URL de SQLite ahí
+              docker run -d --name "${CNAME}" --restart=unless-stopped \
+                --network appnet \
+                -p "${PORT}:${APP_PORT_INTERNAL}" \
+                -v "${SQLITE_DIR}:/data" \
+                -e QUARKUS_DATASOURCE_JDBC_URL="jdbc:sqlite:/data/app.db" \
+                ${IMAGE}:${BRANCH_NAME}
 
-          echo "✅ Desplegado ${CNAME} en puerto ${PORT} con DB en ${SQLITE_DIR} -> /data/app.db"
-        '''
+              echo "✅ Desplegado ${CNAME} en puerto ${PORT} con DB en ${SQLITE_DIR} -> /data/app.db"
+            '''
+          } finally {
+            def elapsed = System.currentTimeMillis() - started
+            pushNetdataMetric('jenkins_pipeline_deploy_duration_ms', elapsed, 'ms')
+          }
+        }
       }
       post { failure { notify('FALLÓ', 'Despliegue por rama') } }
     }
@@ -137,7 +172,8 @@ stage('Start Monitoring Stack') {
   steps {
     withCredentials([
       string(credentialsId: 'slack-webhook', variable: 'SLACK_WEBHOOK_URL'),
-      usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS')
+      usernamePassword(credentialsId: 'smtp-creds', usernameVariable: 'SMTP_USER', passwordVariable: 'SMTP_PASS'),
+      usernamePassword(credentialsId: 'jenkins-monitor-creds', usernameVariable: 'NETDATA_JENKINS_USER', passwordVariable: 'NETDATA_JENKINS_TOKEN')
     ]) {
       sh '''
         set -Eeuo pipefail
@@ -153,10 +189,14 @@ stage('Start Monitoring Stack') {
         fi
 
         ALERT_EMAILS="${ALERT_EMAILS:-msblanco@unis.edu.gt,mariasofiablanco9@gmail.com}"
-        SMTP_FROM="${SMTP_FROM:-alerts@example.com}"
+        SMTP_FROM="${SMTP_FROM:-mariasofiablanco9@example.com}"
         SMTP_HOST="${SMTP_HOST:-smtp.example.com}"
         SMTP_PORT="${SMTP_PORT:-587}"
         SLACK_CHANNEL="${SLACK_CHANNEL:-#alerts}"
+
+        NETDATA_OUT="${OUT_DIR}/netdata"
+        rm -rf "${NETDATA_OUT}"
+        mkdir -p "${NETDATA_OUT}/go.d"
 
         cat > "${OUT_DIR}/alertmanager.yml" <<YAML
 route:
@@ -190,6 +230,51 @@ YAML
         echo "--- alertmanager.yml (preview) ---"
         head -n 30 "${OUT_DIR}/alertmanager.yml" || true
 
+        cat > "${NETDATA_OUT}/health_alarm_notify.conf" <<CONF
+# Autogenerado por pipeline Jenkins
+SLACK_WEBHOOK_URL="${SLACK_WEBHOOK_URL}"
+SLACK_CHANNEL="${SLACK_CHANNEL}"
+DEFAULT_RECIPIENT_SLACK="${SLACK_CHANNEL}"
+SLACK_ICON_EMOJI=":hospital:"
+SLACK_USERNAME="Netdata"
+SEND_SLACK="YES"
+
+SEND_EMAIL="YES"
+DEFAULT_RECIPIENT_EMAIL="${ALERT_EMAILS}"
+EMAIL_SENDER="netdata@hospital.local"
+
+DEFAULT_RECIPIENT_TELEGRAM="_no_notification_"
+DEFAULT_RECIPIENT_DISCORD="_no_notification_"
+DEFAULT_RECIPIENT_PAGERDUTY="_no_notification_"
+CONF
+
+        JENKINS_CONF="${NETDATA_OUT}/go.d/jenkins.conf"
+        if [ -z "${NETDATA_JENKINS_USER:-}" ] || [ -z "${NETDATA_JENKINS_TOKEN:-}" ]; then
+          cat > "${JENKINS_CONF}" <<CONF
+# Jenkins collector deshabilitado (faltan credenciales)
+jobs: []
+CONF
+          echo "⚠️ No se generó configuración de Jenkins para Netdata (faltan credenciales)."
+        else
+          cat > "${JENKINS_CONF}" <<CONF
+jobs:
+  - name: jenkins_pipeline
+    url: "${NETDATA_JENKINS_URL}"
+    username: "${NETDATA_JENKINS_USER}"
+    password: "${NETDATA_JENKINS_TOKEN}"
+    update_every: 30
+    timeout: 15
+    collect_jobs: true
+    jobs_include:
+      - ".*"
+CONF
+        fi
+
+        echo "--- netdata/health_alarm_notify.conf (preview) ---"
+        head -n 40 "${NETDATA_OUT}/health_alarm_notify.conf" || true
+        echo "--- netdata/go.d/jenkins.conf (preview) ---"
+        head -n 40 "${NETDATA_OUT}/go.d/jenkins.conf" || true
+
         docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans
       '''
     }
@@ -207,6 +292,31 @@ YAML
 }
 
 // ---- Helper de correo (emailext simple) ----
+def pushNetdataMetric(String metric, def value, String type = 'ms') {
+  def host = env.NETDATA_HOST?.trim()
+  def port = env.NETDATA_STATSD_PORT?.trim()
+
+  if (!host || !port) {
+    echo "Netdata no configurado; omito métrica ${metric}"
+    return
+  }
+
+  try {
+    sh(
+      label: "netdata ${metric}",
+      script: """#!/bin/bash
+set -euo pipefail
+if [ -z "${NETDATA_HOST:-}" ] || [ -z "${NETDATA_STATSD_PORT:-}" ]; then
+  exit 0
+fi
+echo -n '${metric}:${value}|${type}' > /dev/udp/${NETDATA_HOST}/${NETDATA_STATSD_PORT}
+"""
+    )
+  } catch (err) {
+    echo "No se pudo enviar métrica ${metric} a Netdata: ${err}"
+  }
+}
+
 def notify(String estado, String motivo) {
   def asunto = "[${env.JOB_NAME}][${env.BRANCH_NAME}] #${env.BUILD_NUMBER} – ${estado}"
   def html = """
