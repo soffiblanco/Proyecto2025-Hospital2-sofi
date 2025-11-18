@@ -196,58 +196,7 @@ YAML
   }
 }
 
-stage('Stress test (k6 via Docker)') {
-  steps {
-    sh '''
-      set -Eeuo pipefail
 
-      WORKSPACE_IN_JENKINS="/var/jenkins_home/workspace/hospital-mbp_prod"
-      K6_DIR="$WORKSPACE_IN_JENKINS/load-tests/k6"
-      BASE_URL="http://localhost:3003"
-
-      echo "📁 Listando ${K6_DIR} dentro del contenedor Jenkins (lo montaremos con --volumes-from)..."
-      ls -la "$K6_DIR"
-
-      # Ejecuta k6 usando los volúmenes del contenedor jenkins
-      docker run --rm --network host \
-        --volumes-from jenkins:ro \
-        -w "$K6_DIR" \
-        -e BASE_URL="$BASE_URL" \
-        grafana/k6:latest run stress.js
-    '''
-  }
-}
-
-
-
-
-
-
-
-
-    stage('Stress test (JMeter via Docker)') {
-      when { expression { fileExists('load-tests/jmeter/stress_test.jmx') } }
-      steps {
-        sh '''
-          set -e
-          mkdir -p load-tests/results
-          docker run --rm --network host \
-            -v "$PWD/load-tests:/tests" justb4/jmeter:5.6.3 \
-            -n -t /tests/jmeter/stress_test.jmx \
-            -l /tests/results/stress_results_${BRANCH_NAME}.jtl \
-            -JBASE_HOST=localhost -JBASE_PORT=${PORT}
-        '''
-      }
-      post { failure { notify('FALLÓ', 'Stress test JMeter') } }
-    }
-  }
-
-  post {
-    success { notify('OK', 'Pipeline completado') }
-    failure { notify('FALLÓ', 'Fallo global del pipeline (catch-all)') }
-    always  { sh "docker ps --format 'table {{.Names}}\\t{{.Ports}}\\t{{.Status}}'" }
-  }
-}
 
 // ---- Helper de correo (emailext simple) ----
 def notify(String estado, String motivo) {
