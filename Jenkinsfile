@@ -197,6 +197,14 @@ YAML
 }
 
 
+  }
+
+  post {
+    success { notify('OK', 'Pipeline completado') }
+    failure { notify('FALLÓ', 'Fallo global del pipeline (catch-all)') }
+    always  { sh "docker ps --format 'table {{.Names}}\\t{{.Ports}}\\t{{.Status}}'" }
+  }
+}
 
 // ---- Helper de correo (emailext simple) ----
 def notify(String estado, String motivo) {
