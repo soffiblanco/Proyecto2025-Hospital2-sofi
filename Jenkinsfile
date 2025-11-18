@@ -285,7 +285,16 @@ CONF
   }
 
   post {
-    success { notify('OK', 'Pipeline completado') }
+    success {
+      script {
+        pushNetdataMetric('jenkins_pipeline_alert_probe', 1, 'g')
+      }
+      sleep time: 5, unit: 'SECONDS'
+      script {
+        pushNetdataMetric('jenkins_pipeline_alert_probe', 0, 'g')
+      }
+      notify('OK', 'Pipeline completado')
+    }
     failure { notify('FALLÓ', 'Fallo global del pipeline (catch-all)') }
     always  { sh "docker ps --format 'table {{.Names}}\\t{{.Ports}}\\t{{.Status}}'" }
   }

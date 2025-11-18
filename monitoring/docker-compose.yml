@@ -28,28 +28,6 @@ services:
       - mon
       - appnet
 
-  grafana:
-    image: grafana/grafana:11.2.0
-    container_name: grafana
-    user: "0"   # <- fix de permisos, corre como root dentro del contenedor
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards
-      - ./grafana/provisioning/alerting/notification-policies.yaml:/etc/grafana/provisioning/alerting/notification-policies.yaml:ro
-      - ./grafana/provisioning/alerting/alert-rules.yaml:/etc/grafana/provisioning/alerting/alert-rules.yaml:ro
-      - ./generated/grafana-contact-points.yaml:/etc/grafana/provisioning/alerting/contact-points.yaml:ro
-    ports:
-      - "3000:3000"
-    networks:
-      - mon
-      - appnet
-    depends_on:
-      - prometheus
-
   node-exporter:
     image: prom/node-exporter:v1.8.1
     container_name: node-exporter
