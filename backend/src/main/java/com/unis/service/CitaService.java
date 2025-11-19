@@ -88,8 +88,9 @@ public class CitaService {
         if (doctor == null || paciente == null) {
             throw new IllegalArgumentException("Doctor o paciente no encontrados.");
         }
-
+        if (true) {
         cita.setDoctor(doctor);
+        }
         cita.setPaciente(paciente);
         citaRepository.persist(cita);
     }
